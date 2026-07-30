@@ -1,0 +1,493 @@
+{% extends 'generic/object.html' %}
+{% load helpers %}
+{% load plugins %}
+{% load static %}
+{% load buttons %}
+
+{% block title %}{{ object.name }}{% endblock %}
+
+{% block breadcrumbs %}
+  {{ block.super }}
+{% endblock %}
+
+{% block object_identifier %}{% endblock %}
+
+{% block extra_controls %}
+  {# === GUEST BUTTONS === #}
+  {% if user_is_creator %}
+    {# Gửi: Chỉ hiển thị khi draft/rejected VÀ có ít nhất 1 đối tượng #}
+    {% if object.status == 'draft' or object.status == 'rejected' %}
+      {% if subject_count > 0 %}
+        <form method="post" action="{% url 'plugins:netbox_access_request:accessrequest_submit' object.pk %}" style="display:inline;">
+          {% csrf_token %}
+          <button type="submit" class="btn btn-primary" onclick="return confirm('Bạn có muốn gửi phiếu này đến Admin?');">
+            <i class="mdi mdi-send"></i> Gửi
+          </button>
+        </form>
+      {% endif %}
+    {% endif %}
+  {% endif %}
+
+  {# === ADMIN BUTTONS === #}
+  {% if user_is_admin %}
+    {# Xác nhận: Chỉ khi submitted #}
+    {% if object.status == 'submitted' %}
+      <form method="post" action="{% url 'plugins:netbox_access_request:accessrequest_confirm' object.pk %}" style="display:inline;">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-info" onclick="return confirm('Bạn có muốn xác nhận phiếu này?');">
+          <i class="mdi mdi-check"></i> Xác nhận
+        </button>
+      </form>
+    {% endif %}
+
+    {# Chấp nhận / Từ chối: Chỉ khi confirmed #}
+    {% if object.status == 'confirmed' %}
+      <button type="button" class="btn btn-success" data-bs-toggle="modal" data-bs-target="#approveModal">
+        <i class="mdi mdi-check-all"></i> Chấp nhận
+      </button>
+      <button type="button" class="btn btn-danger" data-bs-toggle="modal" data-bs-target="#rejectModal">
+        <i class="mdi mdi-close-thick"></i> Từ chối
+      </button>
+    {% endif %}
+
+    {# Hoàn thành: Chỉ khi approved #}
+    {% if object.status == 'approved' %}
+      <form method="post" action="{% url 'plugins:netbox_access_request:accessrequest_complete' object.pk %}" style="display:inline;">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-secondary" onclick="return confirm('Bạn có muốn hoàn thành phiếu {{ object.name }}?');">
+          <i class="mdi mdi-flag-checkered"></i> Hoàn thành
+        </button>
+      </form>
+    {% endif %}
+  {% endif %}
+{% endblock %}
+
+{% block tabs %}
+  <ul class="nav nav-tabs" role="tablist">
+    <li class="nav-item">
+      <a class="nav-link {% if active_tab == 'request_info' %}active{% endif %}"
+         data-bs-toggle="tab" href="#tab-request-info" role="tab">
+        <i class="mdi mdi-file-document-outline"></i> Phiếu yêu cầu ra vào
+      </a>
+    </li>
+    <li class="nav-item">
+      <a class="nav-link {% if active_tab == 'history' %}active{% endif %}"
+         data-bs-toggle="tab" href="#tab-history" role="tab">
+        <i class="mdi mdi-history"></i> Lịch sử yêu cầu
+      </a>
+    </li>
+    <li class="nav-item">
+      <a class="nav-link {% if active_tab == 'changelog' %}active{% endif %}"
+         data-bs-toggle="tab" href="#tab-changelog" role="tab">
+        <i class="mdi mdi-text-box-multiple-outline"></i> Nhật ký thay đổi
+      </a>
+    </li>
+    <li class="nav-item">
+      <a class="nav-link {% if active_tab == 'subjects' %}active{% endif %}"
+         data-bs-toggle="tab" href="#tab-subjects" role="tab">
+        <i class="mdi mdi-account-group"></i> Đối tượng
+        {% if subject_count > 0 %}
+          <span class="badge bg-primary">{{ subject_count }}</span>
+        {% endif %}
+      </a>
+    </li>
+  </ul>
+{% endblock %}
+
+{% block content %}
+<div class="row">
+  <div class="col-12">
+
+
+    <div class="tab-content mt-3">
+      {# === TAB 1: Phiếu yêu cầu ra vào === #}
+      <div class="tab-pane fade {% if active_tab == 'request_info' %}show active{% endif %}" id="tab-request-info">
+        <div class="row">
+          <div class="col col-md-6">
+            <div class="card">
+              <h5 class="card-header">Thông tin phiếu yêu cầu</h5>
+              <div class="card-body">
+                <table class="table table-hover attr-table">
+                  <tr>
+                    <th scope="row">Tên phiếu</th>
+                    <td>{{ object.name }}</td>
+                  </tr>
+                  <tr>
+                    <th scope="row">Ngày dự kiến</th>
+                    <td>{{ object.expected_date|date:"d/m/Y" }}</td>
+                  </tr>
+                  <tr>
+                    <th scope="row">Mô tả</th>
+                    <td>{{ object.reason|default:"-" }}</td>
+                  </tr>
+                  <tr>
+                    <th scope="row">Trạng thái</th>
+                    <td>{% badge object.get_status_display bg_color=object.get_status_color %}</td>
+                  </tr>
+                  <tr>
+                    <th scope="row">Region</th>
+                    <td>{{ object.region|default:"-" }}</td>
+                  </tr>
+                  <tr>
+                    <th scope="row">Site</th>
+                    <td>{{ object.site|default:"-" }}</td>
+                  </tr>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <div class="col col-md-6">
+            <div class="card">
+              <h5 class="card-header">Thông tin quản lý</h5>
+              <div class="card-body">
+                <table class="table table-hover attr-table">
+                  <tr>
+                    <th scope="row">Người tạo</th>
+                    <td>{{ object.created_by|default:"-" }}</td>
+                  </tr>
+                  <tr>
+                    <th scope="row">Thời gian tạo</th>
+                    <td>{{ object.created|date:"d/m/Y H:i" }}</td>
+                  </tr>
+                  <tr>
+                    <th scope="row">Thời gian cập nhật</th>
+                    <td>{{ object.last_updated|date:"d/m/Y H:i" }}</td>
+                  </tr>
+                  {% if object.admin_reason %}
+                  <tr>
+                    <th scope="row">Lý do Admin</th>
+                    <td>{{ object.admin_reason }}</td>
+                  </tr>
+                  {% endif %}
+                </table>
+              </div>
+            </div>
+
+            {% include 'inc/panels/custom_fields.html' %}
+          </div>
+        </div>
+      </div>
+
+      {# === TAB 2: Lịch sử yêu cầu === #}
+      <div class="tab-pane fade {% if active_tab == 'history' %}show active{% endif %}" id="tab-history">
+        <div class="card">
+          <h5 class="card-header">Lịch sử yêu cầu</h5>
+          <div class="card-body">
+            {% if history %}
+            <table class="table table-hover">
+              <thead>
+                <tr>
+                  <th>Người thực hiện</th>
+                  <th>Hoạt động</th>
+                  <th>Trạng thái</th>
+                  <th>Thời gian</th>
+                  <th>Mô tả</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for item in history %}
+                <tr>
+                  <td>{{ item.user|default:"-" }}</td>
+                  <td>
+                    {% if "Check-in" in item.action %}
+                      <span class="badge bg-success">Check-in</span>
+                    {% elif "Check-out" in item.action %}
+                      <span class="badge bg-danger">Check-out</span>
+                    {% else %}
+                      {{ item.action }}
+                    {% endif %}
+                  </td>
+                  <td>{{ item.status }}</td>
+                  <td>{{ item.timestamp|date:"d/m/Y H:i:s" }}</td>
+                  <td>{{ item.description|default:"-" }}</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+            {% else %}
+            <span class="text-muted">Chưa có lịch sử.</span>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+
+      {# === TAB 3: Nhật ký thay đổi (Changelog) === #}
+      <div class="tab-pane fade {% if active_tab == 'changelog' %}show active{% endif %}" id="tab-changelog">
+        <div class="card">
+          <h5 class="card-header">Nhật ký thay đổi</h5>
+          <div class="card-body">
+            {% if changelog %}
+            <div class="table-responsive">
+              <table class="table table-hover">
+                <thead>
+                  <tr>
+                    <th>Thời gian</th>
+                    <th>Tên người dùng</th>
+                    <th>Họ và tên đầy đủ</th>
+                    <th>Hoạt động</th>
+                    <th>Type</th>
+                    <th>Đối tượng</th>
+                    <th>Request ID</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for change in changelog %}
+                  <tr>
+                    <td>{{ change.time|date:"d/m/Y H:i:s" }}</td>
+                    <td>{{ change.user.username|default:"-" }}</td>
+                    <td>{{ change.user.get_full_name|default:"-" }}</td>
+                    <td>
+                      {% if change.action == 'create' %}
+                        <span class="badge bg-success">Tạo mới</span>
+                      {% elif change.action == 'update' %}
+                        <span class="badge bg-warning">Cập nhật</span>
+                      {% elif change.action == 'delete' %}
+                        <span class="badge bg-danger">Xóa</span>
+                      {% else %}
+                        {{ change.get_action_display }}
+                      {% endif %}
+                    </td>
+                    <td>{{ change.changed_object_type }}</td>
+                    <td>{{ change.object_repr }}</td>
+                    <td><small class="text-muted">{{ change.request_id|default:"-" }}</small></td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+            {% else %}
+            <span class="text-muted">Chưa có nhật ký thay đổi nào.</span>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+
+      {# === TAB 4: Đối tượng === #}
+      <div class="tab-pane fade {% if active_tab == 'subjects' %}show active{% endif %}" id="tab-subjects">
+        <div class="card">
+          <h5 class="card-header d-flex justify-content-between align-items-center">
+            Danh sách đối tượng
+            <div>
+              {# Thêm mới đối tượng - chỉ cho Guest khi phiếu chưa approved/completed #}
+              {% if user_is_creator and object.status != 'approved' and object.status != 'completed' %}
+                <a href="{% url 'plugins:netbox_access_request:requestsubject_add' object.pk %}"
+                   class="btn btn-sm btn-success">
+                  <i class="mdi mdi-plus-thick"></i> Thêm mới đối tượng
+                </a>
+                <a href="{% url 'plugins:netbox_access_request:requestsubject_import' %}?access_request={{ object.pk }}"
+                   class="btn btn-sm btn-info">
+                  <i class="mdi mdi-upload"></i> Nhập dữ liệu
+                </a>
+              {% endif %}
+            </div>
+          </h5>
+          <div class="card-body">
+            {% if subject_count > 0 %}
+            <div class="table-responsive">
+              <table class="table table-hover">
+                <thead>
+                  <tr>
+                    <th>Mã định danh</th>
+                    <th>Họ tên</th>
+                    <th>Đơn vị</th>
+                    <th>Chức vụ</th>
+                    <th>Trạng thái</th>
+                    <th>Ngày tạo</th>
+                    <th>Thời gian cập nhật</th>
+                    <th>Tệp đính kèm</th>
+                    <th>Xác nhận</th>
+                    <th>Thao tác</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for subject in subject_table.rows %}
+                  {% with subj=subject.record %}
+                  <tr>
+                    <td>{{ subj.id_number }}</td>
+                    <td>
+                      <a href="{% url 'plugins:netbox_access_request:requestsubject' object.pk subj.pk %}">
+                        {{ subj.full_name }}
+                      </a>
+                    </td>
+                    <td>{{ subj.organization }}</td>
+                    <td>{{ subj.position|default:"-" }}</td>
+                    <td>{% badge subj.get_status_display bg_color=subj.get_status_color %}</td>
+                    <td>{{ subj.created|date:"d/m/Y H:i" }}</td>
+                    <td>{{ subj.last_updated|date:"d/m/Y H:i" }}</td>
+                    <td>
+                      {% if subj.get_uploaded_files %}
+                        {% for file in subj.get_uploaded_files %}
+                          <a href="/media/{{ file.file }}" target="_blank" title="{{ file.file_name }}" class="me-1">📄</a>
+                        {% endfor %}
+                      {% else %}
+                        <span class="text-muted">-</span>
+                      {% endif %}
+                    </td>
+                    <td>{% badge subj.get_verify_status_display bg_color=subj.get_verify_status_color %}</td>
+                    <td>
+                      {# Guest actions: Sửa / Xoá (chỉ khi chưa verified hoặc invalid) #}
+                      {% if user_is_creator and subj.verify_status != 'valid' %}
+                        {% if object.status != 'approved' and object.status != 'completed' %}
+                          <a href="{% url 'plugins:netbox_access_request:requestsubject_edit' object.pk subj.pk %}"
+                             class="btn btn-sm btn-warning" title="Sửa">
+                            <i class="mdi mdi-pencil"></i>
+                          </a>
+                          <a href="{% url 'plugins:netbox_access_request:requestsubject_delete' object.pk subj.pk %}"
+                             class="btn btn-sm btn-danger" title="Xoá">
+                            <i class="mdi mdi-trash-can-outline"></i>
+                          </a>
+                        {% endif %}
+                      {% endif %}
+
+                      {# Admin actions: Hợp lệ / Không hợp lệ (chỉ khi admin đã xác nhận phiếu) #}
+                      {% if user_is_admin and object.status == 'confirmed' %}
+                        <form method="post"
+                              action="{% url 'plugins:netbox_access_request:requestsubject_verify' object.pk subj.pk %}"
+                              style="display:inline;">
+                          {% csrf_token %}
+                          <input type="hidden" name="verify_action" value="valid">
+                          <button type="submit" class="btn btn-sm btn-success" title="Hợp lệ"
+                                  {% if subj.verify_status == 'valid' %}disabled{% endif %}>
+                            <i class="mdi mdi-check"></i> Hợp lệ
+                          </button>
+                        </form>
+                        <form method="post"
+                              action="{% url 'plugins:netbox_access_request:requestsubject_verify' object.pk subj.pk %}"
+                              style="display:inline;">
+                          {% csrf_token %}
+                          <input type="hidden" name="verify_action" value="invalid">
+                          <button type="submit" class="btn btn-sm btn-danger" title="Không hợp lệ"
+                                  {% if subj.verify_status == 'invalid' %}disabled{% endif %}>
+                            <i class="mdi mdi-close"></i> Không hợp lệ
+                          </button>
+                        </form>
+                      {% endif %}
+
+                      {# Admin actions: In / Out (chỉ khi phiếu đã approved) #}
+                      {% if user_is_admin and object.status == 'approved' %}
+                        {% if subj.status == 'pending' or subj.status == 'out' %}
+                          <form method="post"
+                                action="{% url 'plugins:netbox_access_request:requestsubject_toggle_status' object.pk subj.pk %}"
+                                style="display:inline;">
+                            {% csrf_token %}
+                            <input type="hidden" name="toggle_action" value="in">
+                            <button type="submit" class="btn btn-sm btn-success" title="Check-in">
+                              <i class="mdi mdi-login"></i> In
+                            </button>
+                          </form>
+                        {% endif %}
+                        {% if subj.status == 'in' %}
+                          <form method="post"
+                                action="{% url 'plugins:netbox_access_request:requestsubject_toggle_status' object.pk subj.pk %}"
+                                style="display:inline;">
+                            {% csrf_token %}
+                            <input type="hidden" name="toggle_action" value="out">
+                            <button type="submit" class="btn btn-sm btn-warning" title="Check-out">
+                              <i class="mdi mdi-logout"></i> Out
+                            </button>
+                          </form>
+                        {% endif %}
+                      {% endif %}
+
+                      {# Xoá đối tượng cho Guest khi phiếu đã approved nhưng chưa completed #}
+                      {% if user_is_creator and object.status == 'approved' and object.status != 'completed' and subj.verify_status != 'valid' %}
+                        <a href="{% url 'plugins:netbox_access_request:requestsubject_delete' object.pk subj.pk %}"
+                           class="btn btn-sm btn-danger" title="Xoá">
+                          <i class="mdi mdi-trash-can-outline"></i>
+                        </a>
+                      {% endif %}
+                    </td>
+                  </tr>
+                  {% endwith %}
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+            {% else %}
+            <span class="text-muted">Chưa có đối tượng nào.</span>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+{# === MODAL: Chấp nhận === #}
+{% if user_is_admin and object.status == 'confirmed' %}
+<div class="modal fade" id="approveModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form method="post" action="{% url 'plugins:netbox_access_request:accessrequest_approve' object.pk %}">
+        {% csrf_token %}
+        <div class="modal-header">
+          <h5 class="modal-title">Chấp nhận phiếu yêu cầu</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          {% if has_invalid_subject %}
+          <div class="alert alert-danger">
+            <i class="mdi mdi-alert"></i>
+            Tồn tại đối tượng có trạng thái xác nhận "Không hợp lệ". Không thể chấp nhận phiếu yêu cầu.
+          </div>
+          {% endif %}
+          <div class="mb-3">
+            <label for="approve-reason" class="form-label">Lý do</label>
+            <textarea class="form-control" id="approve-reason" name="reason" rows="4" maxlength="500"></textarea>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Huỷ</button>
+          <button type="submit" class="btn btn-success" {% if has_invalid_subject %}disabled{% endif %}>
+            <i class="mdi mdi-check-all"></i> Xác nhận
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+{# === MODAL: Từ chối === #}
+<div class="modal fade" id="rejectModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form method="post" action="{% url 'plugins:netbox_access_request:accessrequest_reject' object.pk %}">
+        {% csrf_token %}
+        <div class="modal-header">
+          <h5 class="modal-title">Từ chối phiếu yêu cầu</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <label for="reject-reason" class="form-label">Lý do từ chối <span class="text-danger">*</span></label>
+            <textarea class="form-control" id="reject-reason" name="reason" rows="4" maxlength="500" required></textarea>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Huỷ</button>
+          <button type="submit" class="btn btn-danger">
+            <i class="mdi mdi-close-thick"></i> Xác nhận
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+{# Script to activate correct tab from URL parameter #}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  const urlParams = new URLSearchParams(window.location.search);
+  const tab = urlParams.get('tab');
+  if (tab) {
+    const tabElement = document.querySelector(`a[href="#tab-${tab.replace('_', '-')}"]`);
+    if (tabElement) {
+      const bsTab = new bootstrap.Tab(tabElement);
+      bsTab.show();
+    }
+  }
+});
+</script>
+{% endblock %}

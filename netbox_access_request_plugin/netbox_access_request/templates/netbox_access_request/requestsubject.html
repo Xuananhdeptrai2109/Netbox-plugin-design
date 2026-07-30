@@ -1,0 +1,125 @@
+{% extends 'generic/object.html' %}
+{% load helpers %}
+{% load plugins %}
+{% load static %}
+
+{% block title %}{{ object.full_name }} ({{ object.id_number }}){% endblock %}
+
+{% block breadcrumbs %}
+  <li class="breadcrumb-item">
+    <a href="{% url 'plugins:netbox_access_request:accessrequest_list' %}">Phiếu yêu cầu ra vào</a>
+  </li>
+  <li class="breadcrumb-item">
+    <a href="{{ access_request.get_absolute_url }}">{{ access_request.name }}</a>
+  </li>
+  <li class="breadcrumb-item active" aria-current="page">{{ object.full_name }}</li>
+{% endblock %}
+
+{% block controls %}{% endblock %}
+
+{% block extra_controls %}
+  {% if user_is_creator %}
+    {% if object.verify_status != 'valid' and access_request.status != 'approved' and access_request.status != 'completed' %}
+      <a href="{% url 'plugins:netbox_access_request:requestsubject_edit' access_request.pk object.pk %}" class="btn btn-warning">
+        <i class="mdi mdi-pencil"></i> Sửa
+      </a>
+      <a href="{% url 'plugins:netbox_access_request:requestsubject_delete' access_request.pk object.pk %}" class="btn btn-danger">
+        <i class="mdi mdi-trash-can-outline"></i> Xoá
+      </a>
+    {% endif %}
+  {% endif %}
+{% endblock %}
+
+{% block content %}
+<div class="row">
+  <div class="col col-md-6">
+    <div class="card">
+      <h5 class="card-header">Thông tin đối tượng</h5>
+      <div class="card-body">
+        <table class="table table-hover attr-table">
+          <tr>
+            <th scope="row">Họ và tên</th>
+            <td>{{ object.full_name }}</td>
+          </tr>
+          <tr>
+            <th scope="row">Mã định danh</th>
+            <td>{{ object.id_number }}</td>
+          </tr>
+          <tr>
+            <th scope="row">Đơn vị</th>
+            <td>{{ object.organization }}</td>
+          </tr>
+          <tr>
+            <th scope="row">Chức danh</th>
+            <td>{{ object.position|default:"-" }}</td>
+          </tr>
+          <tr>
+            <th scope="row">Số điện thoại</th>
+            <td>{{ object.phone|default:"-" }}</td>
+          </tr>
+          <tr>
+            <th scope="row">Location</th>
+            <td>{{ object.location|default:"-" }}</td>
+          </tr>
+          <tr>
+            <th scope="row">Mô tả</th>
+            <td>{{ object.description|default:"-" }}</td>
+          </tr>
+          <tr>
+            <th scope="row">Trạng thái</th>
+            <td>{% badge object.get_status_display bg_color=object.get_status_color %}</td>
+          </tr>
+          <tr>
+            <th scope="row">Xác nhận</th>
+            <td>{% badge object.get_verify_status_display bg_color=object.get_verify_status_color %}</td>
+          </tr>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="col col-md-6">
+    <div class="card">
+      <h5 class="card-header">Phiếu yêu cầu liên quan</h5>
+      <div class="card-body">
+        <table class="table table-hover attr-table">
+          <tr>
+            <th scope="row">Tên phiếu</th>
+            <td>
+              <a href="{{ access_request.get_absolute_url }}">{{ access_request.name }}</a>
+            </td>
+          </tr>
+          <tr>
+            <th scope="row">Trạng thái phiếu</th>
+            <td>{% badge access_request.get_status_display bg_color=access_request.get_status_color %}</td>
+          </tr>
+        </table>
+      </div>
+    </div>
+
+    <div class="card">
+      <h5 class="card-header">Tệp đính kèm</h5>
+      <div class="card-body">
+        {% if uploaded_files %}
+          <div class="attachment-list" style="display:flex;gap:12px;flex-wrap:wrap;">
+            {% for file in uploaded_files %}
+              <div class="attachment-item" style="border:1px solid #ddd;border-radius:6px;padding:8px;width:120px;text-align:center;background:#fafbfc;">
+                <span style="font-size:32px;">📄</span>
+                <div style="font-size:13px;word-break:break-all;">
+                  <a href="/media/{{ file.file }}" target="_blank">{{ file.file_name }}</a>
+                </div>
+                <div style="font-size:11px;color:#888;">{{ file.file.size|filesizeformat }}</div>
+                <div style="font-size:10px;color:#aaa;">{{ file.created_at|date:'d/m/Y H:i' }}</div>
+              </div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <span class="text-muted">Không có file đính kèm.</span>
+        {% endif %}
+      </div>
+    </div>
+
+    {% include 'inc/panels/custom_fields.html' %}
+  </div>
+</div>
+{% endblock %}

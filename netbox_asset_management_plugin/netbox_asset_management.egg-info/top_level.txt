@@ -1,0 +1,1 @@
+netbox_asset_management

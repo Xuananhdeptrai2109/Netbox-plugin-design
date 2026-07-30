@@ -1,0 +1,157 @@
+# Định nghĩa các dịch vụ cần thiết cho hệ thống NetBox
+
+services:
+  # Dịch vụ chính của NetBox
+
+  netbox: &netbox # Anchor 'netbox' để tái sử dụng trong các dịch vụ khác
+
+    image: docker.io/netboxcommunity/netbox:${VERSION} # Sử dụng image NetBox từ Docker Hub, với phiên bản được chỉ định từ biến môi trường VERSION
+
+    depends_on: # Các dịch vụ mà NetBox phụ thuộc
+      - postgres # Phụ thuộc vào dịch vụ Postgres (Cơ sở dữ liệu)
+
+      - redis # Phụ thuộc vào dịch vụ Redis (Caching)
+
+      - redis-cache # Phụ thuộc vào dịch vụ Redis Cache
+
+    env_file: env/netbox.env # Tệp môi trường chứa các biến cấu hình cho NetBox
+
+    ports:
+      - "9090:8080" # Map cổng 9090 của container NetBox ra cổng 9090 trên máy chủ host
+    user: "unit:root" # Chạy container với user 'unit' và group 'root'
+
+    healthcheck: # Kiểm tra sức khỏe của dịch vụ NetBox
+      start_period: 60s # Thời gian chờ trước khi bắt đầu kiểm tra sức khỏe
+
+      timeout: 3s # Thời gian tối đa cho mỗi lần kiểm tra
+
+      interval: 15s # Khoảng thời gian giữa các lần kiểm tra
+
+      test: curl -f http://localhost:8080/login/ || exit 1 # Kiểm tra bằng cách gửi yêu cầu HTTP tới endpoint /login/
+
+    volumes: # Gắn kết các thư mục và volume vào container
+      - ./configuration:/etc/netbox/config:z,ro # mount blind Thư mục cấu hình chỉ đọc từ máy chủ host
+
+      - netbox-media-files:/opt/netbox/netbox/media:rw # Volume lưu trữ các tệp media
+
+      - netbox-reports-files:/opt/netbox/netbox/reports:rw # Volume lưu trữ các báo cáo
+
+      - netbox-scripts-files:/opt/netbox/netbox/scripts:rw # Volume lưu trữ các scripts
+
+      # Đưa plugin vào thư mục plugins của container để Python nhận diện đúng module
+
+      - /d/docker-netbox/netbox-provinces-plugin/provinces_manager:/opt/netbox/netbox/provinces_manager
+      - /d/docker-netbox/netbox_asset_management_plugin/netbox_asset_management:/opt/netbox/netbox/netbox_asset_management:z
+      - /d/docker-netbox/upload_file_plugin-production/upload_file_plugin:/opt/netbox/netbox/upload_file_plugin:z
+      - /d/docker-netbox/netbox_access_request_plugin/netbox_access_request:/opt/netbox/netbox/netbox_access_request:z
+      - /d/docker-netbox/netbox_rack_layout_plugin/netbox_rack_layout:/opt/netbox/netbox/netbox_rack_layout:z
+      - /d/docker-netbox/netbox_smart_lock_plugin/netbox_smart_lock:/opt/netbox/netbox/netbox_smart_lock:z
+  netbox-worker:
+    <<: *netbox # Kế thừa toàn bộ cấu hình từ anchor 'netbox'
+
+    depends_on:
+      netbox:
+        condition: service_healthy # Chỉ khởi động khi dịch vụ NetBox khỏe mạnh
+    ports: []
+    command:
+      - /opt/netbox/venv/bin/python # Chạy lệnh Python trong môi trường ảo
+
+      - /opt/netbox/netbox/manage.py # Sử dụng manage.py của NetBox
+
+      - rqworker # Chạy worker để xử lý các công việc nền
+
+    healthcheck: # Kiểm tra sức khỏe của worker
+      start_period: 20s # Thời gian chờ trước khi bắt đầu kiểm tra sức khỏe
+
+      timeout: 3s # Thời gian tối đa cho mỗi lần kiểm tra
+
+      interval: 15s # Khoảng thời gian giữa các lần kiểm tra
+
+      test: ps -aux | grep -v grep | grep -q rqworker || exit 1 # Kiểm tra tiến trình rqworker có đang chạy không
+
+  # Dịch vụ NetBox housekeeping
+
+  netbox-housekeeping:
+    <<: *netbox # Kế thừa toàn bộ cấu hình từ anchor 'netbox'
+
+    depends_on:
+      netbox:
+        condition: service_healthy # Chỉ khởi động khi dịch vụ NetBox khỏe mạnh
+    ports: []
+    command:
+      - /opt/netbox/housekeeping.sh # Chạy script housekeeping để bảo trì hệ thống
+
+    healthcheck: # Kiểm tra sức khỏe của housekeeping
+      start_period: 20s # Thời gian chờ trước khi bắt đầu kiểm tra sức khỏe
+
+      timeout: 3s # Thời gian tối đa cho mỗi lần kiểm tra
+
+      interval: 15s # Khoảng thời gian giữa các lần kiểm tra
+
+      test: ps -aux | grep -v grep | grep -q housekeeping || exit 1 # Kiểm tra tiến trình housekeeping có đang chạy không
+
+  # Dịch vụ cơ sở dữ liệu PostgreSQL
+
+  postgres:
+    image: docker.io/postgres:16-alpine # Sử dụng image PostgreSQL từ Docker Hub
+
+    env_file: env/postgres.env # Tệp môi trường chứa các biến cấu hình cho PostgreSQL
+    ports:
+      - "5432:5432"
+    volumes:
+      - netbox-postgres-data:/var/lib/postgresql/data # Volume lưu trữ dữ liệu của PostgreSQL
+
+  # Dịch vụ Redis cho caching
+
+  redis:
+    image: docker.io/redis:7-alpine # Sử dụng image Redis từ Docker Hub
+
+    command:
+      - sh
+
+      - -c # Chạy lệnh Redis Server với cấu hình từ biến môi trường
+
+      - redis-server --appendonly yes --requirepass $$REDIS_PASSWORD # Kích hoạt append-only mode và yêu cầu mật khẩu
+
+    env_file: env/redis.env # Tệp môi trường chứa các biến cấu hình cho Redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - netbox-redis-data:/data # Volume lưu trữ dữ liệu của Redis
+
+  # Dịch vụ Redis cache cho NetBox
+
+  redis-cache:
+    image: docker.io/redis:7-alpine # Sử dụng image Redis từ Docker Hub
+
+    command:
+      - sh
+
+      - -c # Chạy lệnh Redis Server với cấu hình từ biến môi trường
+
+      - redis-server --requirepass $$REDIS_PASSWORD # Yêu cầu mật khẩu khi truy cập Redis
+
+    env_file: env/redis-cache.env # Tệp môi trường chứa các biến cấu hình cho Redis Cache
+    volumes:
+      - netbox-redis-cache-data:/data # Volume lưu trữ dữ liệu cache của Redis
+
+# Định nghĩa các volumes cho các dịch vụ
+
+volumes:
+  netbox-media-files:
+    driver: local # Sử dụng driver local để tạo volume lưu trữ tệp media của NetBox
+
+  netbox-postgres-data:
+    driver: local # Sử dụng driver local để tạo volume lưu trữ dữ liệu của PostgreSQL
+
+  netbox-redis-cache-data:
+    driver: local # Sử dụng driver local để tạo volume lưu trữ dữ liệu cache của Redis
+
+  netbox-redis-data:
+    driver: local # Sử dụng driver local để tạo volume lưu trữ dữ liệu của Redis
+
+  netbox-reports-files:
+    driver: local # Sử dụng driver local để tạo volume lưu trữ các báo cáo của NetBox
+
+  netbox-scripts-files:
+    driver: local # Sử dụng driver local để tạo volume lưu trữ các scripts của NetBox

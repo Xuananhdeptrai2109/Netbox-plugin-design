@@ -1,0 +1,523 @@
+<script>
+// HTMX wrapper
+if (typeof showCustomToast === 'undefined') { window.showCustomToast = function(msg) { console.log(msg); }; }
+(function() {
+    const originalAddEventListener = document.addEventListener;
+    let domContentLoadedCallback = null;
+    document.addEventListener = function(event, callback, options) {
+        if (event === 'DOMContentLoaded') {
+            domContentLoadedCallback = callback;
+        } else {
+            originalAddEventListener.call(document, event, callback, options);
+        }
+    };
+
+let tempFiles = [];
+let uploadedFilesList = [];
+let deletedFilesList = [];
+let hasFileChanges = false; 
+let originalFiles = []; 
+
+function getCookie(name) {
+  let cookieValue = null;
+  if (document.cookie && document.cookie !== '') {
+    const cookies = document.cookie.split(';');
+    for (let i = 0; i < cookies.length; i++) {
+      const cookie = cookies[i].trim();
+      if (cookie.substring(0, name.length + 1) === (name + '=')) {
+        cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+        break;
+      }
+    }
+  }
+  return cookieValue;
+}
+
+function uploadFilesToServer(files, objectId = null) {
+  const formData = new FormData();
+
+  for (let i = 0; i < files.length; i++) {
+    formData.append('files', files[i]);
+  }
+
+  const modelName = document.getElementById('incident-model-name').value;
+  const sessionKey = document.getElementById('incident-session-key').value;
+  const valid_flg = document.getElementById('validate-flag').value;
+  const type_file = document.getElementById('list-type-file').value;
+  formData.append('object_id', objectId || '');
+  formData.append('model_name', modelName);
+  formData.append('session_key', sessionKey);
+  formData.append('valid_flg', valid_flg)
+  formData.append('type_file', type_file)
+
+  return fetch(window.UPLOAD_FILE_URL, {
+    method: "POST",
+    headers: {
+      "X-CSRFToken": getCookie('csrftoken'),
+      "X-Requested-With": "XMLHttpRequest"
+    },
+    body: formData
+  })
+  .then(res => res.json())
+  .then(data => {
+    if (data.errors && data.errors.length > 0) {
+      const errorMessage = data.errors.join('\n');
+      showCustomToast('Lỗi upload file:\n' + errorMessage, 'danger');
+      return { success: false, errors: data.errors };
+    } else {
+      if (data.saved_files && data.saved_files.length > 0) {
+        data.saved_files.forEach(f => {
+          if(!checkValidation(f)){
+            return { success: false, error: "File is not validate" }
+          } 
+          uploadedFilesList.push({ file_name: f.file_name, path: f.path, size: f.size });
+        });
+        
+        updateUploadedFilesInput();
+      }
+      return { success: true, saved_files: data.saved_files };
+    }
+  })
+  .catch(error => {
+    console.error('Upload error:', error);
+    showCustomToast('Có lỗi xảy ra khi upload file!', 'danger');
+    return { success: false, error: error.message };
+  });
+}
+
+function renderFileList() {
+  const list = document.getElementById('incident-upload-list');
+  list.innerHTML = '';
+
+  var dbFiles = window.UPLOADED_FILES || [];
+
+  if (!document.getElementById('incident-object-id').value) {
+    tempFiles.forEach((file, index) => {
+      list.innerHTML += `
+        <div class="attachment-item temp-file" data-temp-index="${index}">
+          <span class="icon">📄</span>
+            <div class="filename">
+                  <a href="${file.path}" target="_blank" class="download-link">${file.name}</a>
+          </div>
+          <div class="filesize">${(file.size/1024).toFixed(1)} KB</div>
+          <div class="created">Tạm thời</div>
+          <button type="button" class="delete-btn" data-temp-index="${index}" title="Xóa">🗑</button>
+        </div>
+      `;
+    });
+  }
+
+  dbFiles.forEach(file => {
+    list.innerHTML += `
+      <div class="attachment-item" data-id="${file.id}">
+        <span class="icon">📄</span>
+          <div class="filename">
+          <a href="/media/${file.file}" target="_blank" class="download-link">${file.file_name}</a>
+          </div>
+        <div class="filesize">${(file.size/1024).toFixed(1)} KB</div>
+        <div class="created">${file.created_at}</div>
+        <button type="button" class="delete-btn" data-id="${file.id}" title="Xóa">🗑</button>
+      </div>
+    `;
+  });
+
+  list.querySelectorAll('.delete-btn').forEach(btn => {
+    btn.onclick = function() {
+      const fileId = this.getAttribute('data-id');
+      const tempIndex = this.getAttribute('data-temp-index');
+      const uploadedIndex = this.getAttribute('data-uploaded-index');
+      
+      if (tempIndex !== null) {
+          tempFiles.splice(parseInt(tempIndex), 1);
+          renderFileList();
+      } else if (uploadedIndex !== null) {
+          const idx = parseInt(uploadedIndex);
+          if (idx >= 0 && idx < uploadedFilesList.length) {
+            deletedFilesList.push(uploadedFilesList[idx]);
+            uploadedFilesList.splice(idx, 1);
+            updateUploadedFilesInput();
+          }
+          btn.closest('.attachment-item').remove();
+          updateAllFilesInput();
+          document.activeElement.blur();
+      } else {
+          if (window.UPLOADED_FILES) {
+            const idx = window.UPLOADED_FILES.findIndex(f => f.id == fileId);
+            if (idx !== -1) {
+              deletedFilesList.push(window.UPLOADED_FILES[idx]);
+              window.UPLOADED_FILES.splice(idx, 1);
+            }
+          }
+          btn.closest('.attachment-item').remove();
+          updateAllFilesInput();
+          document.activeElement.blur(); 
+        }
+      }
+  });
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+  var fileInput = document.getElementById('incident-upload-file-input');
+  var resultDiv = document.getElementById('incident-upload-result');
+  
+  originalFiles = window.UPLOADED_FILES ? [...window.UPLOADED_FILES] : [];
+  
+  renderFileList();
+  updateAllFilesInput();
+
+  fileInput.addEventListener('change', function(e) {
+    const files = e.target.files;
+    if (files.length > 0) {
+      const objectId = document.getElementById('incident-object-id').value;
+
+      resultDiv.innerHTML = `
+        <i class="mdi mdi-loading mdi-spin" style="font-size:20px;color:blue;vertical-align:middle;"></i> Đang upload file...
+      `;
+      uploadFilesToServer(files, objectId).then(result => {
+        console.log('Upload result:', result); 
+        let html = '';
+        if (result.saved_files && result.saved_files.length > 0) {
+          const list = document.getElementById('incident-upload-list');
+          result.saved_files.forEach((file,index) => {
+            let type_file_valid = '';
+            valid_extensions = [
+                'jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'tiff',
+                'pdf', 'docx', 'xlsx', 'pptx', 'odt', 'ods',
+                'txt', 'csv', 'json', 'yaml', 'xml', 'md', 'log',
+                'mp3', 'wav', 'mp4', 'mov', 'avi', 'mkv',
+              ]
+              if (document.getElementById('list-type-file').value.trim() == '' ){
+                type_file_valid = valid_extensions
+              }
+              else{
+              type_file_valid = document.getElementById('list-type-file').value
+                .replace('[', '')
+                .replace(']', '')
+                .split(',')
+                .map(s => s.trim().replace(/'/g, '')).join(', ')
+              }
+            if(checkValidation(file)){
+              list.innerHTML += `
+              <div class="attachment-item">
+                <span class="icon">📄</span>
+                <div class="filename">
+                  <a href="${getAbsoluteFileUrl(file.path)}" target="_blank" class="download-link">${file.file_name}</a>
+                </div>
+                <div class="filesize">${(file.size/1024).toFixed(1)} KB</div>
+                <div class="created">Vừa upload</div>
+                 <button type="button" class="delete-btn" data-uploaded-index="${index}" title="Xóa">🗑</button>
+              </div>
+            `;
+            }
+            else{result.errors = ["File được nhập không đúng định dạng", file.file_name , "Các file đúng định dạng là: "
+              + type_file_valid]
+              }
+          })
+          
+          list.querySelectorAll('.delete-btn').forEach(btn => {
+            btn.onclick = function() {
+              const fileId = this.getAttribute('data-id');
+              const tempIndex = this.getAttribute('data-temp-index');
+              const uploadedIndex = this.getAttribute('data-uploaded-index');
+              
+              if (tempIndex !== null) {
+                tempFiles.splice(parseInt(tempIndex), 1);
+                renderFileList();
+
+              } else if (uploadedIndex !== null) {
+                  const idx = parseInt(uploadedIndex);
+                  if (idx >= 0 && idx < uploadedFilesList.length) {
+                    deletedFilesList.push(uploadedFilesList[idx]);
+                    uploadedFilesList.splice(idx, 1);
+                    updateUploadedFilesInput();
+                  
+                  btn.closest('.attachment-item').remove();
+                  updateAllFilesInput();
+                  document.activeElement.blur();
+                }
+              } else {
+                  if (window.UPLOADED_FILES) {
+                    const idx = window.UPLOADED_FILES.findIndex(f => f.id == fileId);
+                    if (idx !== -1) {
+                      deletedFilesList.push(window.UPLOADED_FILES[idx]);
+                      window.UPLOADED_FILES.splice(idx, 1);
+                    }
+                  }
+                  btn.closest('.attachment-item').remove();
+                  updateAllFilesInput();
+                  document.activeElement.blur(); 
+              }
+            }
+          });
+          
+          updateAllFilesInput();
+        }
+        if (result.errors && result.errors.length > 0) {
+          html += '<br><span style="color:orange;">Một số file lỗi: ' + result.errors.join('<br>') + '</span>';
+        }
+        if ((!result.saved_files || result.saved_files.length === 0) && result.errors && result.errors.length > 0) {
+          html = '<span style="color:red;">Upload file thất bại!<br>' + result.errors.join('<br>') + '</span>';
+        }
+        if (!html && result.success) {
+          showCustomToast('Upload file thành công!', 'success')
+        }
+        resultDiv.innerHTML = html;
+      });
+      fileInput.value = '';
+    }
+  });
+
+  const incidentForm = document.querySelector('form');
+  if (incidentForm) {
+    incidentForm.addEventListener('submit', function(e) {
+      updateAllFilesInput();
+      updateFileChangesStatus();
+     
+      if (tempFiles.length > 0 && !document.getElementById('incident-object-id').value) {
+        e.preventDefault();
+
+        const formData = new FormData(incidentForm);
+
+        tempFiles.forEach((tempFile, index) => {
+          formData.append('files', tempFile.file);
+        });
+
+        formData.append('deleted_files', JSON.stringify(deletedFilesList));
+
+        fetch(incidentForm.action, {
+          method: 'POST',
+          body: formData,
+          headers: {
+            "X-CSRFToken": getCookie('csrftoken')
+          }
+        })
+        .then(response => {
+          if (response.redirected) {
+            window.location.href = response.url;
+          } else if (response.ok) {
+            window.location.reload();
+          } else {
+            return response.text();
+          }
+        })
+        .then(html => {
+          if (html) {
+            const tempDiv = document.createElement('div');
+            tempDiv.innerHTML = html;
+            document.body.appendChild(tempDiv);
+          }
+        })
+        .catch(error => {
+          console.error('Error:', error);
+          showCustomToast('Có lỗi xảy ra khi tạo incident!', 'danger');
+        });
+      } else {
+        const deletedInput = document.getElementById('deleted-files-input');
+        if (deletedInput) {
+          deletedInput.value = JSON.stringify(deletedFilesList);
+        }
+      }
+    });
+  }
+});
+
+function updateUploadedFilesInput() {
+  const input = document.getElementById('uploaded-files-input');
+  if (input) {
+    input.value = JSON.stringify(uploadedFilesList);
+  }
+  
+  updateAllFilesInput();
+  updateFileChangesStatus();
+}
+
+function getCurrentFilesState() {
+  let dbFiles = (window.UPLOADED_FILES || []).filter(file => {
+    return !deletedFilesList.some(deletedFile => {
+      if (file.id && deletedFile.id) {
+        return file.id === deletedFile.id;
+      }
+      return file.file_name === deletedFile.file_name && file.path === deletedFile.path;
+    });
+  });
+
+  let uploadedFiles = uploadedFilesList.map(f => ({
+    file_name: f.file_name,
+    path: f.path,
+    size: f.size
+  }));
+
+  let tempFilesData = tempFiles.map(f => ({
+    file_name: f.name,
+    path: f.path || ''
+  }));
+
+  return [...dbFiles.map(f => ({file_name: f.file_name, path: f.path || f.file})), ...uploadedFiles, ...tempFilesData];
+}
+
+function isFilesArrayEqual(arr1, arr2) {
+  if (arr1.length !== arr2.length) return false;
+  const sortFn = (a, b) => (a.file_name + a.path).localeCompare(b.file_name + b.path);
+  const sorted1 = [...arr1].sort(sortFn);
+  const sorted2 = [...arr2].sort(sortFn);
+  for (let i = 0; i < sorted1.length; i++) {
+    if (sorted1[i].file_name !== sorted2[i].file_name || sorted1[i].path !== sorted2[i].path) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function updateFileChangesStatus() {
+  const currentFiles = getCurrentFilesState();
+  const originalFilesSimple = (originalFiles || []).map(f => ({
+    file_name: f.file_name || f.name,
+    path: f.path || f.file
+  }));
+  hasFileChanges = !isFilesArrayEqual(currentFiles, originalFilesSimple);
+
+  const changesInput = document.getElementById('has-file-changes-input');
+  if (changesInput) {
+    changesInput.value = hasFileChanges ? 'true' : 'false';
+  }
+  console.log('File changes status:', hasFileChanges);
+}
+
+function updateAllFilesInput() {
+  const allFilesInput = document.getElementById('all-files-input');
+  if (allFilesInput) {
+    const allFiles = getAllDisplayedFiles();
+    console.log('Updated all-files-input:', allFiles);
+    allFilesInput.value = JSON.stringify(allFiles);
+  }
+  
+  updateFileChangesStatus();
+}
+
+function getAllDisplayedFiles() {
+  let files = [];
+  if (!document.getElementById('incident-object-id').value) {
+    const tempFilesData = tempFiles.map(f => ({
+      name: f.name,
+      size: f.size,
+      path: f.path || ''
+    }));
+    files = files.concat(tempFilesData);
+  }
+  
+  const uploadedFilesData = uploadedFilesList.map(f => ({
+    file_name: f.file_name,
+    path: f.path,
+    size: f.size
+  }));
+  files = files.concat(uploadedFilesData);
+  
+  if (window.UPLOADED_FILES) {
+    const dbFilesData = window.UPLOADED_FILES.map(f => ({
+      file_name: f.file_name,
+      path: f.file,
+    }));
+    files = files.concat(dbFilesData);
+  }
+  
+  return files;
+}
+
+function getAbsoluteFileUrl(path) {
+  if (!path) return '#';
+  if (path.startsWith('http') || path.startsWith('/')) return path;
+  return '/' + path.replace(/^\/+/, '');
+}
+
+const customBox = document.getElementById('custom-upload-box');
+const fileInput = document.getElementById('incident-upload-file-input');
+customBox.addEventListener('click', function(e) {
+  if (e.target.classList.contains('upload-browse') || e.target === customBox) {
+    fileInput.click();
+  }
+});
+customBox.addEventListener('dragover', function(e) {
+  e.preventDefault();
+  customBox.style.borderColor = '#1976d2';
+});
+customBox.addEventListener('dragleave', function(e) {
+  e.preventDefault();
+  customBox.style.borderColor = '#bdbdbd';
+});
+
+customBox.addEventListener('drop', function(e) {
+  e.preventDefault();
+  customBox.style.borderColor = '#bdbdbd';
+
+  const files = e.dataTransfer.files;
+  if (files.length > 0) {
+    const resultDiv = document.getElementById('incident-upload-result');
+    resultDiv.innerHTML = `
+      <i class="mdi mdi-loading mdi-spin" style="font-size:20px;color:blue;vertical-align:middle;"></i> Đang upload file...
+    `;
+
+    const objectId = document.getElementById('incident-object-id').value;
+    uploadFilesToServer(files, objectId).then(result => {
+      let html = '';
+      if (result.saved_files && result.saved_files.length > 0) {
+        const list = document.getElementById('incident-upload-list');
+        result.saved_files.forEach((file, index) => {
+          list.innerHTML += `
+            <div class="attachment-item">
+              <span class="icon">📄</span>
+              <div class="filename">
+                 <a href="${getAbsoluteFileUrl(file.path)}" target="_blank" class="download-link">${file.file_name}</a>
+              </div>
+              <div class="filesize">${(file.size/1024).toFixed(1)} KB</div>
+              <div class="created">Vừa upload</div>
+              <button type="button" class="delete-btn" data-uploaded-index="${index}" title="Xóa">🗑</button>
+            </div>
+          `;
+        });
+        list.querySelectorAll('.delete-btn').forEach(btn => {
+          btn.onclick = function() {
+          }
+        });
+        updateAllFilesInput();
+      }
+      if (result.errors && result.errors.length > 0) {
+        html += '<br><span style="color:orange;">Một số file lỗi: ' + result.errors.join('<br>') + '</span>';
+      }
+      if ((!result.saved_files || result.saved_files.length === 0) && result.errors && result.errors.length > 0) {
+        html = '<span style="color:red;">Upload file thất bại!<br>' + result.errors.join('<br>') + '</span>';
+      }
+      if (!html && result.success) {
+        showCustomToast('Upload file thành công!', 'success')
+      }
+      resultDiv.innerHTML = html;
+    });
+  }
+});
+
+function checkValidation(file) {
+  const validateFlag = document.getElementById('validate-flag').value;
+  const typeFile = document.getElementById('list-type-file').value;
+  
+  // Định dạng ảnh png, jpeg, jpg theo yêu cầu
+  const valid_extensions = ['jpg', 'jpeg', 'png'];
+  const ext = file.file_name.split('.').pop().toLowerCase();
+  
+  if(!valid_extensions.includes(ext)){
+    return false;
+  }
+  
+  // Kiểm tra dung lượng tối đa 25MB (25 * 1024 * 1024 bytes)
+  const max_size = 25 * 1024 * 1024;
+  if(file.size && file.size > max_size) {
+    return false;
+  }
+  
+  return true;
+}
+
+    document.addEventListener = originalAddEventListener;
+    if (domContentLoadedCallback) {
+        domContentLoadedCallback();
+    }
+})();
+</script>

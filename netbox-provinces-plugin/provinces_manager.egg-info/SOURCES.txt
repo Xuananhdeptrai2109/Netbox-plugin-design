@@ -1,0 +1,13 @@
+setup.py
+provinces_manager/__init__.py
+provinces_manager/forms.py
+provinces_manager/models.py
+provinces_manager/navigation.py
+provinces_manager/tables.py
+provinces_manager/urls.py
+provinces_manager/views.py
+provinces_manager.egg-info/PKG-INFO
+provinces_manager.egg-info/SOURCES.txt
+provinces_manager.egg-info/dependency_links.txt
+provinces_manager.egg-info/not-zip-safe
+provinces_manager.egg-info/top_level.txt

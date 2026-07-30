@@ -1,0 +1,2649 @@
+{% extends 'generic/object.html' %}
+{% load static %}
+
+{% block title %}Visualization - {{ object }}{% endblock %}
+
+{% block content %}
+<script src="https://unpkg.com/konva@9/konva.min.js"></script>
+<style>
+    /* ===== ROOT VARIABLES ===== */
+    :root {
+        --rl-bg: #0f1117;
+        --rl-surface: #1a1d27;
+        --rl-surface-2: #252836;
+        --rl-border: #2e3245;
+        --rl-text: #e4e7f1;
+        --rl-text-muted: #8b90a5;
+        --rl-accent: #6c63ff;
+        --rl-accent-hover: #7f78ff;
+        --rl-success: #2ecc71;
+        --rl-warning: #f1c40f;
+        --rl-danger: #e74c3c;
+        --rl-info: #3498db;
+        --rl-sidebar-w: 320px;
+        --rl-toolbar-h: 52px;
+        --rl-radius: 10px;
+        --rl-glass: rgba(26, 29, 39, 0.85);
+    }
+
+    /* ===== LAYOUT WRAPPER ===== */
+    .rl-wrapper {
+        display: flex;
+        height: calc(100vh - 220px);
+        min-height: 500px;
+        overflow: hidden;
+        background: var(--rl-bg);
+        color: var(--rl-text);
+        font-family: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
+        border-radius: var(--rl-radius);
+        border: 1px solid var(--rl-border);
+    }
+
+    /* ===== SIDEBAR ===== */
+    .rl-sidebar {
+        width: var(--rl-sidebar-w);
+        min-width: var(--rl-sidebar-w);
+        background: var(--rl-glass);
+        backdrop-filter: blur(20px);
+        -webkit-backdrop-filter: blur(20px);
+        border-right: 1px solid var(--rl-border);
+        display: flex;
+        flex-direction: column;
+        z-index: 10;
+        overflow: hidden;
+        transition: width 0.2s cubic-bezier(0.4, 0, 0.2, 1), min-width 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    .rl-sidebar-header {
+        padding: 16px;
+        border-bottom: 1px solid var(--rl-border);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+    }
+
+    .rl-sidebar-header h5 {
+        margin: 0;
+        font-size: 14px;
+        font-weight: 700;
+        color: var(--rl-accent);
+        text-transform: uppercase;
+        letter-spacing: 1.5px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        transition: opacity 0.15s ease;
+    }
+
+    #rl-sidebar-toggle {
+        background: rgba(255, 255, 255, 0.03);
+        border: 1px solid var(--rl-border);
+        color: var(--rl-text-muted);
+        cursor: pointer;
+        font-size: 10px;
+        padding: 6px 8px;
+        border-radius: 6px;
+        transition: all 0.15s ease;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+    }
+    #rl-sidebar-toggle:hover {
+        background: rgba(108, 99, 255, 0.15);
+        color: var(--rl-text);
+        border-color: var(--rl-accent);
+    }
+
+    /* Collapsed Sidebar State */
+    .rl-sidebar.collapsed {
+        width: 72px !important;
+        min-width: 72px !important;
+    }
+    .rl-sidebar.collapsed .rl-sidebar-header {
+        padding: 16px 8px;
+        justify-content: center;
+    }
+    .rl-sidebar.collapsed .rl-sidebar-title {
+        display: none !important;
+    }
+    .rl-sidebar.collapsed .rl-search-box {
+        display: none !important;
+    }
+    .rl-sidebar.collapsed .rl-section-label {
+        display: none !important;
+    }
+    .rl-sidebar.collapsed .rl-item {
+        justify-content: center;
+        padding: 8px;
+        margin: 8px auto;
+        width: 48px;
+        height: 48px;
+    }
+    .rl-sidebar.collapsed .rl-item-info {
+        display: none !important;
+    }
+
+    /* Search */
+    .rl-search-box {
+        padding: 12px 16px 8px;
+    }
+
+    .rl-search-input {
+        width: 100%;
+        padding: 9px 12px 9px 36px;
+        border: 1px solid var(--rl-border);
+        border-radius: 8px;
+        background: var(--rl-surface-2);
+        color: var(--rl-text);
+        font-size: 13px;
+        outline: none;
+        transition: border-color .2s;
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='%238b90a5' viewBox='0 0 16 16'%3E%3Cpath d='M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85zm-5.44.906a5.5 5.5 0 1 1 0-11 5.5 5.5 0 0 1 0 11z'/%3E%3C/svg%3E");
+        background-repeat: no-repeat;
+        background-position: 10px center;
+    }
+
+    .rl-search-input:focus {
+        border-color: var(--rl-accent);
+    }
+
+    /* Item lists */
+    .rl-items-scroll {
+        flex: 1;
+        overflow-y: auto;
+        padding: 0 12px 12px;
+    }
+
+    .rl-items-scroll::-webkit-scrollbar {
+        width: 5px;
+    }
+
+    .rl-items-scroll::-webkit-scrollbar-track {
+        background: transparent;
+    }
+
+    .rl-items-scroll::-webkit-scrollbar-thumb {
+        background: var(--rl-border);
+        border-radius: 4px;
+    }
+
+    .rl-section-label {
+        font-size: 11px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 1.2px;
+        color: var(--rl-text-muted);
+        padding: 14px 4px 6px;
+        position: sticky;
+        top: 0;
+        background: var(--rl-glass);
+        backdrop-filter: blur(20px);
+        z-index: 2;
+    }
+
+    .rl-item {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 10px 12px;
+        margin: 3px 0;
+        border-radius: 8px;
+        background: var(--rl-surface-2);
+        border: 1px solid transparent;
+        cursor: grab;
+        transition: all .15s;
+        user-select: none;
+    }
+
+    .rl-item:hover {
+        border-color: var(--rl-accent);
+        background: rgba(108, 99, 255, .08);
+        transform: translateX(3px);
+    }
+
+    .rl-item:active {
+        cursor: grabbing;
+    }
+
+    .rl-item.placed {
+        opacity: .45;
+        pointer-events: none;
+    }
+
+    .rl-item-icon {
+        width: 34px;
+        height: 34px;
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 16px;
+        flex-shrink: 0;
+    }
+
+    .rl-item-icon.rack-icon {
+        background: linear-gradient(135deg, #6c63ff 0%, #4834d4 100%);
+        color: #fff;
+    }
+
+    .rl-item-icon.asset-icon {
+        background: linear-gradient(135deg, #e67e22 0%, #d35400 100%);
+        color: #fff;
+    }
+
+    .rl-item-icon.smartlock-icon {
+        background: linear-gradient(135deg, #00d2d3 0%, #1abc9c 100%);
+        color: #fff;
+    }
+
+    .rl-item-info {
+        flex: 1;
+        min-width: 0;
+    }
+
+    .rl-item-name {
+        font-size: 13px;
+        font-weight: 600;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .rl-item-meta {
+        font-size: 11px;
+        color: var(--rl-text-muted);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    /* ===== MAIN AREA ===== */
+    .rl-main {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        position: relative;
+    }
+
+    /* Toolbar */
+    .rl-toolbar {
+        height: var(--rl-toolbar-h);
+        background: var(--rl-glass);
+        backdrop-filter: blur(20px);
+        border-bottom: 1px solid var(--rl-border);
+        display: flex;
+        align-items: center;
+        padding: 0 16px;
+        gap: 12px;
+        z-index: 10;
+    }
+
+    .rl-toolbar-group {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+
+    .rl-toolbar-divider {
+        width: 1px;
+        height: 28px;
+        background: var(--rl-border);
+        margin: 0 6px;
+    }
+
+    .rl-btn {
+        padding: 7px 14px;
+        border: 1px solid var(--rl-border);
+        border-radius: 7px;
+        background: var(--rl-surface-2);
+        color: var(--rl-text);
+        font-size: 12px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all .15s;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        white-space: nowrap;
+    }
+
+    .rl-btn:hover {
+        background: var(--rl-accent);
+        border-color: var(--rl-accent);
+        color: #fff;
+    }
+
+    .rl-btn.active {
+        background: var(--rl-accent);
+        border-color: var(--rl-accent);
+        color: #fff;
+    }
+
+    .rl-btn-save {
+        background: linear-gradient(135deg, var(--rl-accent) 0%, #4834d4 100%);
+        border-color: var(--rl-accent);
+        color: #fff;
+    }
+
+    .rl-btn-save:hover {
+        box-shadow: 0 4px 18px rgba(108, 99, 255, .4);
+        transform: translateY(-1px);
+    }
+
+    .rl-btn-danger:hover {
+        background: var(--rl-danger);
+        border-color: var(--rl-danger);
+    }
+
+    .rl-zoom-display {
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--rl-text-muted);
+        min-width: 48px;
+        text-align: center;
+    }
+
+    .rl-toolbar-right {
+        margin-left: auto;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .rl-coords {
+        font-size: 11px;
+        color: var(--rl-text-muted);
+        font-family: 'Consolas', 'Fira Code', monospace;
+        padding: 5px 10px;
+        background: var(--rl-surface-2);
+        border-radius: 6px;
+        min-width: 140px;
+        text-align: center;
+    }
+
+    /* Grid size selector */
+    .rl-grid-select {
+        padding: 6px 8px;
+        border: 1px solid var(--rl-border);
+        border-radius: 7px;
+        background: var(--rl-surface-2);
+        color: var(--rl-text);
+        font-size: 12px;
+        outline: none;
+        cursor: pointer;
+    }
+
+    /* ===== CANVAS CONTAINER ===== */
+    .rl-canvas-container {
+        flex: 1;
+        position: relative;
+        overflow: hidden;
+        background: #0a0c12;
+    }
+
+    /* ===== TOAST ===== */
+    .rl-toast {
+        position: fixed;
+        bottom: 24px;
+        right: 24px;
+        padding: 14px 22px;
+        border-radius: 10px;
+        font-size: 13px;
+        font-weight: 600;
+        color: #fff;
+        z-index: 9999;
+        opacity: 0;
+        transform: translateY(20px);
+        transition: all .3s ease;
+        pointer-events: none;
+        box-shadow: 0 8px 30px rgba(0, 0, 0, .3);
+    }
+
+    .rl-toast.show {
+        opacity: 1;
+        transform: translateY(0);
+    }
+
+    .rl-toast.success {
+        background: linear-gradient(135deg, #2ecc71, #27ae60);
+    }
+
+    .rl-toast.error {
+        background: linear-gradient(135deg, #e74c3c, #c0392b);
+    }
+
+    .rl-toast.info {
+        background: linear-gradient(135deg, #3498db, #2980b9);
+    }
+
+    /* ===== EMPTY STATE ===== */
+    .rl-empty-state {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        text-align: center;
+        color: var(--rl-text-muted);
+        z-index: 5;
+        pointer-events: none;
+    }
+
+    .rl-empty-state .icon {
+        font-size: 48px;
+        margin-bottom: 12px;
+        opacity: .3;
+    }
+
+    .rl-empty-state p {
+        font-size: 14px;
+        margin: 4px 0;
+    }
+
+    /* ===== LOADING ===== */
+    .rl-loading-overlay {
+        position: absolute;
+        inset: 0;
+        background: rgba(15, 17, 23, .8);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 100;
+    }
+
+    .rl-spinner {
+        width: 40px;
+        height: 40px;
+        border: 3px solid var(--rl-border);
+        border-top-color: var(--rl-accent);
+        border-radius: 50%;
+        animation: rl-spin .7s linear infinite;
+    }
+
+    @keyframes rl-spin {
+        to {
+            transform: rotate(360deg);
+        }
+    }
+
+    /* ===== CONTEXT MENU ===== */
+    .rl-context-menu {
+        position: fixed;
+        background: var(--rl-surface);
+        border: 1px solid var(--rl-border);
+        border-radius: 10px;
+        padding: 6px 0;
+        min-width: 180px;
+        z-index: 9999;
+        box-shadow: 0 12px 40px rgba(0, 0, 0, .4);
+        display: none;
+    }
+
+    .rl-context-menu.show {
+        display: block;
+    }
+
+    .rl-context-item {
+        padding: 9px 16px;
+        font-size: 13px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        transition: background .1s;
+    }
+
+    .rl-context-item:hover {
+        background: rgba(108, 99, 255, .12);
+    }
+
+    .rl-context-item.danger {
+        color: var(--rl-danger);
+    }
+
+    .rl-context-divider {
+        height: 1px;
+        background: var(--rl-border);
+        margin: 4px 0;
+    }
+
+    /* ===== CANVAS TOOLTIP ===== */
+    .rl-canvas-tooltip {
+        position: absolute;
+        background: rgba(20, 22, 30, 0.95);
+        backdrop-filter: blur(8px);
+        -webkit-backdrop-filter: blur(8px);
+        border: 1px solid var(--rl-border);
+        border-radius: 8px;
+        padding: 10px 14px;
+        color: var(--rl-text);
+        font-family: 'Inter', sans-serif;
+        font-size: 11px;
+        pointer-events: none;
+        z-index: 1000;
+        opacity: 0;
+        transform: translateY(6px) scale(0.98);
+        transition: opacity 0.15s ease, transform 0.15s ease;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
+        min-width: 180px;
+    }
+
+    .rl-canvas-tooltip.show {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+
+    .rl-tooltip-title {
+        font-weight: 700;
+        font-size: 12px;
+        margin-bottom: 6px;
+        border-bottom: 1px solid var(--rl-border);
+        padding-bottom: 4px;
+        color: #fff;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+
+    .rl-tooltip-row {
+        display: flex;
+        justify-content: space-between;
+        margin: 3px 0;
+        gap: 12px;
+    }
+
+    .rl-tooltip-label {
+        color: var(--rl-text-muted);
+    }
+
+    .rl-tooltip-val {
+        font-weight: 600;
+        text-align: right;
+    }
+
+    .rl-tooltip-badge {
+        padding: 1px 5px;
+        border-radius: 4px;
+        font-size: 9px;
+        text-transform: uppercase;
+        font-weight: bold;
+        color: #fff;
+    }
+</style>
+
+<div class="rl-wrapper" id="rl-wrapper">
+    <!-- SIDEBAR -->
+    <div class="rl-sidebar">
+        <div class="rl-sidebar-header">
+            <h5 class="rl-sidebar-title">📐 Rack Layout Manager</h5>
+            <button id="rl-sidebar-toggle" title="Thu nhỏ sidebar">◀</button>
+        </div>
+        <div class="rl-search-box">
+            <input type="text" class="rl-search-input" id="rl-search" placeholder="Tìm kiếm Rack, Device...">
+        </div>
+        <div class="rl-items-scroll" id="rl-items-scroll">
+            <div class="rl-section-label">Racks (Tủ Rack)</div>
+            <div id="rl-rack-list"></div>
+            <div class="rl-section-label">Assets (Tài sản)</div>
+            <div id="rl-asset-list"></div>
+            <div class="rl-section-label">Items (Đồ)</div>
+            <div id="rl-item-list"></div>
+        </div>
+    </div>
+
+    <!-- MAIN AREA -->
+    <div class="rl-main">
+        <!-- TOOLBAR -->
+        <div class="rl-toolbar">
+            <div class="rl-toolbar-group" id="rl-nav-group" style="display: none;">
+                <button class="rl-btn" id="rl-back-btn" style="background: rgba(108, 99, 255, 0.15); border-color: var(--rl-accent); color: var(--rl-text);">
+                    ⬅ Quay lại Mặt bằng
+                </button>
+                <span id="rl-breadcrumb" style="font-size: 13px; font-weight: 600; color: var(--rl-text-muted); margin-left: 8px;"></span>
+            </div>
+            <div class="rl-toolbar-divider" id="rl-nav-divider" style="display: none;"></div>
+            <div class="rl-toolbar-group">
+                <button class="rl-btn rl-btn-save" id="rl-save-btn" title="Lưu Layout (Ctrl+S)">
+                    💾 Save Layout
+                </button>
+            </div>
+            <div class="rl-toolbar-divider"></div>
+            <div class="rl-toolbar-group">
+                <button class="rl-btn" id="rl-zoom-in" title="Phóng to">🔍+</button>
+                <span class="rl-zoom-display" id="rl-zoom-display">100%</span>
+                <button class="rl-btn" id="rl-zoom-out" title="Thu nhỏ">🔍−</button>
+                <button class="rl-btn" id="rl-zoom-reset" title="Khôi phục sơ đồ đã lưu gần nhất">⟲</button>
+                <button class="rl-btn" id="rl-fit-btn" title="Fit to Screen">⊡ Fit</button>
+            </div>
+            <div class="rl-toolbar-divider"></div>
+            <div class="rl-toolbar-group">
+                <label style="font-size:12px;color:var(--rl-text-muted);white-space:nowrap;">Grid:</label>
+                <select class="rl-grid-select" id="rl-grid-size">
+                    <option value="10">10 px</option>
+                    <option value="20" selected>20 px</option>
+                    <option value="50">50 px</option>
+                </select>
+                <button class="rl-btn active" id="rl-snap-btn" title="Snap to Grid">⊞ Snap</button>
+            </div>
+            <div class="rl-toolbar-right">
+                <span class="rl-coords" id="rl-coords">X: 0 &nbsp; Y: 0</span>
+            </div>
+        </div>
+
+        <!-- CANVAS -->
+        <div class="rl-canvas-container" id="rl-canvas-container">
+            <div id="rl-stage-container"></div>
+            <div class="rl-canvas-tooltip" id="rl-canvas-tooltip"></div>
+            <div class="rl-empty-state" id="rl-empty-state" style="display:none;">
+                <div class="icon">🏗️</div>
+                <p><strong>Chưa có layout</strong></p>
+                <p>Kéo thả Rack hoặc Asset từ sidebar để bắt đầu</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- CONTEXT MENU -->
+<div class="rl-context-menu" id="rl-context-menu">
+    <div class="rl-context-item" id="ctx-rotate-cw">↻ Xoay 90° theo chiều kim đồng hồ</div>
+    <div class="rl-context-item" id="ctx-rotate-ccw">↺ Xoay 90° ngược chiều</div>
+    <div class="rl-context-divider"></div>
+    <div class="rl-context-item" id="ctx-bring-front">⬆ Đưa lên trên cùng</div>
+    <div class="rl-context-item" id="ctx-send-back">⬇ Đerek xuống dưới cùng</div>
+    <div class="rl-context-divider"></div>
+    <div class="rl-context-item danger" id="ctx-remove">🗑 Xóa khỏi Layout</div>
+</div>
+
+<!-- TOAST -->
+<div class="rl-toast" id="rl-toast"></div>
+
+<!-- LOADING OVERLAY -->
+<div class="rl-loading-overlay" id="rl-loading" style="display:none;">
+    <div class="rl-spinner"></div>
+</div>
+
+<script>
+    (function () {
+        'use strict';
+
+        // ===== CONFIGURATION =====
+        // Location ID is injected from Django template context — no dropdown needed
+        const LOCATION_ID = {{ object.pk }};
+        const API_BASE = '/api/plugins/rack-layout';
+        let gridSize = 20;
+        let snapToGrid = true;
+        let currentLocationId = LOCATION_ID;
+        let allRacks = [];
+        let allAssets = [];
+        let allSmartLocks = [];
+        let placedObjects = new Map();
+        let wallCounter = 0;
+
+        // ===== STATUS COLORS =====
+        const RACK_STATUS_COLORS = {
+            'active': '#2ecc71',
+            'planned': '#3498db',
+            'reserved': '#f39c12',
+            'available': '#1abc9c',
+            'deprecated': '#e74c3c',
+        };
+        const ASSET_STATUS_COLORS = {
+            'active': '#2ecc71',
+            'spare': '#3498db',
+            'maintenance': '#e67e22',
+            'broken': '#e74c3c',
+        };
+        const SMARTLOCK_STATUS_COLORS = {
+            'active': '#2ecc71',
+            'inactive': '#e74c3c',
+        };
+
+        // ===== DOM REFS =====
+        const searchInput = document.getElementById('rl-search');
+        const rackListEl = document.getElementById('rl-rack-list');
+        const assetListEl = document.getElementById('rl-asset-list');
+        const itemListEl = document.getElementById('rl-item-list');
+        const saveBtn = document.getElementById('rl-save-btn');
+        const zoomInBtn = document.getElementById('rl-zoom-in');
+        const zoomOutBtn = document.getElementById('rl-zoom-out');
+        const zoomResetBtn = document.getElementById('rl-zoom-reset');
+        const fitBtn = document.getElementById('rl-fit-btn');
+        const zoomDisplay = document.getElementById('rl-zoom-display');
+        const gridSizeSelect = document.getElementById('rl-grid-size');
+        const snapBtn = document.getElementById('rl-snap-btn');
+        const coordsDisplay = document.getElementById('rl-coords');
+        const emptyState = document.getElementById('rl-empty-state');
+        const loadingOverlay = document.getElementById('rl-loading');
+        const contextMenu = document.getElementById('rl-context-menu');
+        const toastEl = document.getElementById('rl-toast');
+        const tooltipEl = document.getElementById('rl-canvas-tooltip');
+        // ===== VIEW MODE STATE & DOM REFS =====
+        let currentViewMode = 'location'; // 'location' or 'wall'
+        let activeWallId = null;
+        let wallAssetsMap = new Map(); // key: wallId (int) -> Array of asset objects
+        let floorPlanObjects = []; // backup of floor plan objects when viewing a wall
+
+        const navGroupEl = document.getElementById('rl-nav-group');
+        const backBtn = document.getElementById('rl-back-btn');
+        const breadcrumbEl = document.getElementById('rl-breadcrumb');
+        const navDividerEl = document.getElementById('rl-nav-divider');
+        // ===== KONVA STAGE =====
+        const stageContainer = document.getElementById('rl-stage-container');
+        const canvasContainer = document.getElementById('rl-canvas-container');
+        let stageWidth = canvasContainer.clientWidth;
+        let stageHeight = canvasContainer.clientHeight;
+
+        const stage = new Konva.Stage({
+            container: 'rl-stage-container',
+            width: stageWidth,
+            height: stageHeight,
+            draggable: true,
+            dragBoundFunc: function(pos) {
+                return {
+                    x: Math.min(0, pos.x),
+                    y: Math.min(0, pos.y),
+                };
+            }
+        });
+
+        const gridLayer = new Konva.Layer({ listening: false });
+        const mainLayer = new Konva.Layer();
+        const axisLayer = new Konva.Layer({ listening: false });
+        stage.add(gridLayer);
+        stage.add(mainLayer);
+        stage.add(axisLayer);
+
+        // Transformer for rotation & resize
+        const transformer = new Konva.Transformer({
+            rotateEnabled: true,
+            resizeEnabled: false,
+            rotationSnaps: [0, 45, 90, 135, 180, 225, 270, 315],
+            borderStroke: '#6c63ff',
+            borderStrokeWidth: 2,
+            anchorStroke: '#6c63ff',
+            anchorFill: '#fff',
+            anchorSize: 8,
+            keepRatio: false,
+            boundBoxFunc: (oldBox, newBox) => {
+                if (Math.abs(newBox.width) < 10) newBox.width = 10 * Math.sign(newBox.width) || 10;
+                if (Math.abs(newBox.height) < 10) newBox.height = 10 * Math.sign(newBox.height) || 10;
+                return newBox;
+            },
+        });
+        mainLayer.add(transformer);
+
+        let selectedNode = null;
+
+        // ===== HELPERS =====
+        function showToast(msg, type = 'info') {
+            toastEl.textContent = msg;
+            toastEl.className = 'rl-toast ' + type;
+            toastEl.classList.add('show');
+            clearTimeout(toastEl._timeout);
+            toastEl._timeout = setTimeout(() => toastEl.classList.remove('show'), 3000);
+        }
+
+        function showLoading() { loadingOverlay.style.display = 'flex'; }
+        function hideLoading() { loadingOverlay.style.display = 'none'; }
+
+        function getCsrfToken() {
+            const cookie = document.cookie.split(';').find(c => c.trim().startsWith('csrftoken='));
+            return cookie ? cookie.split('=')[1] : '';
+        }
+
+        function snapValue(val) {
+            return snapToGrid ? Math.round(val / gridSize) * gridSize : val;
+        }
+
+        function getRackColorByUtilization(freePercentage) {
+            if (freePercentage >= 70) {
+                return '#2ecc71';
+            } else if (freePercentage >= 40) {
+                return '#3498db';
+            } else if (freePercentage >= 10) {
+                return '#f39c12';
+            } else {
+                return '#e74c3c';
+            }
+        }
+
+        // ===== GRID DRAWING =====
+        function drawGrid() {
+            gridLayer.destroyChildren();
+            axisLayer.destroyChildren();
+
+            const scale = stage.scaleX();
+            const stagePos = stage.position();
+
+            const viewLeft = -stagePos.x / scale;
+            const viewTop = -stagePos.y / scale;
+            const viewRight = viewLeft + stageWidth / scale;
+            const viewBottom = viewTop + stageHeight / scale;
+
+            let step = gridSize;
+            while (step * scale < 12) step *= 5;
+
+            const startX = Math.floor(viewLeft / step) * step;
+            const endX = Math.ceil(viewRight / step) * step;
+            const startY = Math.floor(viewTop / step) * step;
+            const endY = Math.ceil(viewBottom / step) * step;
+
+            const lines = [];
+            const gridStartX = Math.max(0, startX);
+            for (let x = gridStartX; x <= endX; x += step) {
+                lines.push(new Konva.Line({
+                    points: [x, Math.max(0, viewTop), x, viewBottom + 100],
+                    stroke: x === 0 ? 'rgba(108,99,255,0.3)' : 'rgba(255,255,255,0.04)',
+                    strokeWidth: x === 0 ? 1.5 / scale : 0.5 / scale,
+                }));
+            }
+            const gridStartY = Math.max(0, startY);
+            for (let y = gridStartY; y <= endY; y += step) {
+                lines.push(new Konva.Line({
+                    points: [Math.max(0, viewLeft), y, viewRight + 100, y],
+                    stroke: y === 0 ? 'rgba(108,99,255,0.3)' : 'rgba(255,255,255,0.04)',
+                    strokeWidth: y === 0 ? 1.5 / scale : 0.5 / scale,
+                }));
+            }
+            lines.forEach(l => gridLayer.add(l));
+
+            const fontSize = 10 / scale;
+            for (let x = gridStartX; x <= endX; x += step * 2) {
+                if (x <= 0) continue;
+                axisLayer.add(new Konva.Text({
+                    x: x, y: 4 / scale, text: String(Math.round(x)),
+                    fontSize: fontSize, fill: 'rgba(139,144,165,0.5)',
+                }));
+            }
+            for (let y = gridStartY; y <= endY; y += step * 2) {
+                if (y <= 0) continue;
+                axisLayer.add(new Konva.Text({
+                    x: 4 / scale, y: y, text: String(Math.round(y)),
+                    fontSize: fontSize, fill: 'rgba(139,144,165,0.5)',
+                }));
+            }
+            axisLayer.add(new Konva.Text({
+                x: 6 / scale, y: 6 / scale, text: '0,0',
+                fontSize: 11 / scale, fill: '#6c63ff', fontStyle: 'bold',
+            }));
+
+            gridLayer.batchDraw();
+            axisLayer.batchDraw();
+        }
+
+        // ===== ZOOM =====
+        function getScale() { return stage.scaleX(); }
+        function setZoom(newScale, center) {
+            newScale = Math.max(0.1, Math.min(5, newScale));
+            const oldScale = stage.scaleX();
+            const cx = center ? center.x : stageWidth / 2;
+            const cy = center ? center.y : stageHeight / 2;
+            const mousePointTo = {
+                x: (cx - stage.x()) / oldScale,
+                y: (cy - stage.y()) / oldScale,
+            };
+            const newX = cx - mousePointTo.x * newScale;
+            const newY = cy - mousePointTo.y * newScale;
+            stage.scale({ x: newScale, y: newScale });
+            stage.position({
+                x: Math.min(0, newX),
+                y: Math.min(0, newY),
+            });
+            stage.batchDraw();
+            zoomDisplay.textContent = Math.round(newScale * 100) + '%';
+            drawGrid();
+            updateLOD(newScale);
+        }
+
+        function updateLOD(scale) {
+            const isLod = scale < 0.45;
+            mainLayer.find('.layout-object').forEach(group => {
+                const type = group.getAttr('objectType');
+                if (type === 'rack') {
+                    const details = group.findOne('.rack-details');
+                    const lodIcon = group.findOne('.rack-lod-icon');
+                    if (details) details.visible(!isLod);
+                    if (lodIcon) lodIcon.visible(isLod);
+                } else if (type === 'asset') {
+                    const details = group.findOne('.asset-details');
+                    const lodIcon = group.findOne('.asset-lod-icon');
+                    if (details) details.visible(!isLod);
+                    if (lodIcon) lodIcon.visible(isLod);
+                }
+            });
+            mainLayer.batchDraw();
+        }
+
+        stage.on('wheel', (e) => {
+            e.evt.preventDefault();
+            const oldScale = getScale();
+            const pointer = stage.getPointerPosition();
+            const direction = e.evt.deltaY > 0 ? -1 : 1;
+            const factor = 1.08;
+            const newScale = direction > 0 ? oldScale * factor : oldScale / factor;
+            setZoom(newScale, pointer);
+        });
+
+        zoomInBtn.addEventListener('click', () => setZoom(getScale() * 1.2));
+        zoomOutBtn.addEventListener('click', () => setZoom(getScale() / 1.2));
+        zoomResetBtn.addEventListener('click', () => {
+            loadLayout(LOCATION_ID);
+        });
+
+        // Fit to content
+        function fitToContent() {
+            if (currentViewMode === 'wall') {
+                const wallBgGroup = mainLayer.findOne('.wall-bg-group');
+                if (wallBgGroup) {
+                    const wallBgRect = wallBgGroup.findOne('.wall-bg-rect');
+                    const wallLength = wallBgRect.width();
+                    const wallHeight = wallBgRect.height();
+                    
+                    const padding = 80;
+                    const scaleX = (stageWidth - padding * 2) / wallLength;
+                    const scaleY = (stageHeight - padding * 2) / wallHeight;
+                    const newScale = Math.max(0.2, Math.min(scaleX, scaleY, 1.0));
+
+                    stage.scale({ x: newScale, y: newScale });
+                    stage.position({ x: 0, y: 0 });
+
+                    const targetX = Math.round(((stageWidth / newScale) - wallLength) / 2);
+                    const targetY = Math.round(((stageHeight / newScale) - wallHeight) / 2);
+                    wallBgGroup.x(targetX);
+                    wallBgGroup.y(targetY);
+
+                    stage.batchDraw();
+                    zoomDisplay.textContent = Math.round(newScale * 100) + '%';
+                    drawGrid();
+                }
+                return;
+            }
+
+            const objects = mainLayer.find('.layout-object');
+            if (objects.length === 0) return;
+
+            let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+            objects.forEach(group => {
+                const rect = group.getClientRect({ relativeTo: mainLayer });
+                minX = Math.min(minX, rect.x);
+                minY = Math.min(minY, rect.y);
+                maxX = Math.max(maxX, rect.x + rect.width);
+                maxY = Math.max(maxY, rect.y + rect.height);
+            });
+
+            const contentWidth = maxX - minX;
+            const contentHeight = maxY - minY;
+            if (contentWidth <= 0 || contentHeight <= 0) return;
+
+            const padding = 60;
+            const scaleX = (stageWidth - padding * 2) / contentWidth;
+            const scaleY = (stageHeight - padding * 2) / contentHeight;
+            const newScale = Math.max(0.15, Math.min(scaleX, scaleY, 1.5));
+
+            const centerX = (minX + maxX) / 2;
+            const centerY = (minY + maxY) / 2;
+
+            stage.scale({ x: newScale, y: newScale });
+            stage.position({
+                x: Math.min(0, stageWidth / 2 - centerX * newScale),
+                y: Math.min(0, stageHeight / 2 - centerY * newScale),
+            });
+            stage.batchDraw();
+            zoomDisplay.textContent = Math.round(newScale * 100) + '%';
+            drawGrid();
+            updateLOD(newScale);
+        }
+
+        fitBtn.addEventListener('click', fitToContent);
+
+        // ===== PAN =====
+        stage.on('dragstart', (e) => {
+            if (e.target === stage) {
+                stageContainer.style.cursor = 'grabbing';
+            }
+        });
+
+        stage.on('dragmove', (e) => {
+            if (e.target === stage) {
+                drawGrid();
+            }
+        });
+
+        stage.on('dragend', (e) => {
+            if (e.target === stage) {
+                stageContainer.style.cursor = 'grab';
+            }
+        });
+
+        stage.on('mouseenter', () => {
+            stageContainer.style.cursor = 'grab';
+        });
+
+        stage.on('mouseleave', () => {
+            stageContainer.style.cursor = 'default';
+        });
+
+        document.addEventListener('keydown', (e) => {
+            if ((e.code === 'Delete' || e.code === 'Backspace') && selectedNode) {
+                if (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'SELECT') return;
+                removeNodeFromCanvas(selectedNode);
+            }
+            if (e.ctrlKey && e.code === 'KeyS') {
+                e.preventDefault();
+                saveLayout();
+            }
+        });
+
+        stage.on('mousemove', (e) => {
+            const pos = stage.getPointerPosition();
+            if (pos) {
+                const scale = getScale();
+                const worldX = Math.max(0, Math.round((pos.x - stage.x()) / scale));
+                const worldY = Math.max(0, Math.round((pos.y - stage.y()) / scale));
+                coordsDisplay.textContent = `X: ${worldX}   Y: ${worldY}`;
+            }
+            if (e.target === stage) {
+                stageContainer.style.cursor = 'grab';
+                mainLayer.find('.layout-object').forEach(otherGroup => {
+                    deactivateGroupHover(otherGroup);
+                });
+                if (tooltipEl) {
+                    tooltipEl.classList.remove('show');
+                }
+            }
+        });
+
+        stage.on('click tap', (e) => {
+            if (e.target === stage) {
+                deselectAll();
+            }
+        });
+
+        // ===== RESIZE =====
+        window.addEventListener('resize', () => {
+            stageWidth = canvasContainer.clientWidth;
+            stageHeight = canvasContainer.clientHeight;
+            stage.width(stageWidth);
+            stage.height(stageHeight);
+            drawGrid();
+        });
+
+        // ===== REDRAW LAYOUT OBJECTS =====
+        function redrawLayoutObjects(savedObjects) {
+            // Clear existing canvas objects
+            mainLayer.find('.layout-object').forEach(n => n.destroy());
+            const bg = mainLayer.findOne('.wall-bg-group');
+            if (bg) bg.destroy();
+            transformer.nodes([]);
+            selectedNode = null;
+            placedObjects.clear();
+
+            savedObjects.forEach(obj => {
+                if (obj.parent_type === 'wall') {
+                    // Mark as placed in sidebar list but do not draw on floor stage
+                    const key = `${obj.object_type}_${obj.object_id}`;
+                    placedObjects.set(key, true);
+                    return;
+                }
+                let info;
+                if (obj.object_type === 'rack') {
+                    info = allRacks.find(r => r.id === obj.object_id);
+                    if (info) {
+                        addRackToCanvas(info, obj.x, obj.y, obj.rotation, obj.z_index);
+                    }
+                } else if (obj.object_type === 'asset') {
+                    info = allAssets.find(a => a.id === obj.object_id);
+                    if (info) {
+                        addAssetToCanvas(info, obj.x, obj.y, obj.rotation, obj.z_index, obj.width, obj.height);
+                    }
+                } else if (obj.object_type === 'wall') {
+                    let wt = 'h';
+                    if (obj.width && obj.height) {
+                        wt = (obj.height > obj.width) ? 'v' : 'h';
+                    } else {
+                        const normalizedRot = ((obj.rotation % 360) + 360) % 360;
+                        wt = (normalizedRot === 90 || normalizedRot === 270) ? 'v' : 'h';
+                    }
+                    const wallItem = {
+                        id: obj.object_id,
+                        wallType: wt,
+                        customWidth: obj.width || 0,
+                        customHeight: obj.height || 0,
+                    };
+                    addWallToCanvas(wallItem, obj.x, obj.y, obj.rotation, obj.z_index);
+                    if (obj.object_id > wallCounter) wallCounter = obj.object_id;
+                }
+            });
+
+            // Draw indicators on loaded walls
+            drawWallIndicators();
+
+            mainLayer.batchDraw();
+            renderSidebarLists();
+        }
+
+        // ===== LOAD LAYOUT DATA =====
+        async function loadLayout(locationId) {
+            if (!locationId) return;
+            showLoading();
+            currentLocationId = locationId;
+            emptyState.style.display = 'none';
+
+            try {
+                const resp = await fetch(`${API_BASE}/layout/${locationId}/`, {
+                    headers: { 'Accept': 'application/json' }
+                });
+                if (!resp.ok) throw new Error('API error');
+                const data = await resp.json();
+
+                allRacks = data.racks || [];
+                allAssets = data.assets || [];
+                allSmartLocks = data.smartlocks || [];
+
+                wallCounter = 0;
+                wallAssetsMap.clear();
+
+                const savedObjects = data.objects || [];
+
+                if (savedObjects.length === 0 && allRacks.length === 0 && allAssets.length === 0) {
+                    emptyState.style.display = '';
+                }
+
+                // Populate wallAssetsMap first
+                savedObjects.forEach(obj => {
+                    if (obj.parent_type === 'wall') {
+                        const parentWallId = parseInt(obj.parent_id, 10);
+                        if (!wallAssetsMap.has(parentWallId)) {
+                            wallAssetsMap.set(parentWallId, []);
+                        }
+                        wallAssetsMap.get(parentWallId).push(obj);
+                    }
+                });
+
+                // Redraw everything
+                redrawLayoutObjects(savedObjects);
+
+                hideLoading();
+                if (savedObjects.length > 0) {
+                    setTimeout(fitToContent, 100);
+                }
+                showToast(`Đã tải layout cho: ${data.location.name}`, 'success');
+            } catch (err) {
+                console.error('Error loading layout:', err);
+                hideLoading();
+                showToast('Lỗi khi tải layout', 'error');
+            }
+        }
+
+        // ===== RENDER SIDEBAR =====
+        function renderSidebarLists() {
+            const query = searchInput.value.toLowerCase().trim();
+            renderList(rackListEl, allRacks, 'rack', query);
+            renderList(assetListEl, allAssets, 'asset', query);
+            renderGenericItems(query);
+        }
+
+        function renderGenericItems(query) {
+            itemListEl.innerHTML = '';
+
+            const wallItems = [
+                { wallType: 'h', name: 'Tường (🧱)', meta: 'Kéo để thêm tường', icon: '🧱' },
+            ];
+
+            wallItems.forEach(wallDef => {
+                const searchText = `wall tường ${wallDef.name}`.toLowerCase();
+                if (query && !searchText.includes(query)) return;
+
+                const el = document.createElement('div');
+                el.className = 'rl-item';
+                el.dataset.type = 'wall';
+                el.draggable = true;
+                el.setAttribute('title', `${wallDef.name} (${wallDef.meta})`);
+                el.innerHTML = `
+                    <div class="rl-item-icon" style="background:#57606f">🧱</div>
+                    <div class="rl-item-info">
+                        <div class="rl-item-name">${wallDef.name}</div>
+                        <div class="rl-item-meta">${wallDef.meta}</div>
+                    </div>
+                `;
+                el.addEventListener('dragstart', (e) => {
+                    e.dataTransfer.setData('application/json', JSON.stringify({
+                        type: 'wall',
+                        item: { id: 0, wallType: wallDef.wallType }
+                    }));
+                    e.dataTransfer.effectAllowed = 'copy';
+                });
+                itemListEl.appendChild(el);
+            });
+        }
+
+        function renderList(container, items, type, query) {
+            container.innerHTML = '';
+            items.forEach(item => {
+                const name = item.name || `${type} #${item.id}`;
+                const key = `${type}_${item.id}`;
+                if (query && !name.toLowerCase().includes(query)) return;
+
+                const el = document.createElement('div');
+                el.className = 'rl-item' + (placedObjects.has(key) ? ' placed' : '');
+                el.dataset.type = type;
+                el.dataset.id = item.id;
+                el.draggable = true;
+
+                let meta = '';
+                let iconClass = '';
+                if (type === 'rack') {
+                    const freePercentage = item.free_percentage !== undefined ? item.free_percentage : 100;
+                    const freeU = item.free_u !== undefined ? item.free_u : (item.u_height || 42);
+                    meta = `${item.u_height || 42}U · Trống ${freeU}U (${freePercentage}%)`;
+                    iconClass = 'rack-icon';
+                    el.innerHTML = `
+                    <div class="rl-item-icon ${iconClass}">🗄</div>
+                    <div class="rl-item-info">
+                        <div class="rl-item-name">${name}</div>
+                        <div class="rl-item-meta" style="color: ${getRackColorByUtilization(freePercentage)}">${meta}</div>
+                    </div>
+                `;
+                } else if (type === 'asset') {
+                    meta = `${item.asset_code || ''} · ${item.asset_group || ''}`;
+                    iconClass = 'asset-icon';
+                    el.innerHTML = `
+                    <div class="rl-item-icon ${iconClass}">📦</div>
+                    <div class="rl-item-info">
+                        <div class="rl-item-name">${name}</div>
+                        <div class="rl-item-meta">${meta}</div>
+                    </div>
+                `;
+                } else if (type === 'smartlock') {
+                    meta = `${item.code || ''} · ${item.device_type || ''}`;
+                    iconClass = 'smartlock-icon';
+                    el.innerHTML = `
+                    <div class="rl-item-icon ${iconClass}">🔒</div>
+                    <div class="rl-item-info">
+                        <div class="rl-item-name">${name}</div>
+                        <div class="rl-item-meta">${meta}</div>
+                    </div>
+                `;
+                }
+
+                el.setAttribute('title', `${name} (${meta})`);
+
+                el.addEventListener('dragstart', (e) => {
+                    e.dataTransfer.setData('application/json', JSON.stringify({ type, item }));
+                    e.dataTransfer.effectAllowed = 'copy';
+                });
+
+                container.appendChild(el);
+            });
+        }
+
+        searchInput.addEventListener('input', renderSidebarLists);
+
+        // ===== SIDEBAR TOGGLE COLLAPSE =====
+        const sidebar = document.querySelector('.rl-sidebar');
+        const toggleBtn = document.getElementById('rl-sidebar-toggle');
+        
+        function handleResize() {
+            stageWidth = canvasContainer.clientWidth;
+            stageHeight = canvasContainer.clientHeight;
+            stage.width(stageWidth);
+            stage.height(stageHeight);
+            drawGrid();
+        }
+
+        toggleBtn.addEventListener('click', () => {
+            sidebar.classList.toggle('collapsed');
+            if (sidebar.classList.contains('collapsed')) {
+                toggleBtn.innerHTML = '▶';
+                toggleBtn.setAttribute('title', 'Mở rộng sidebar');
+            } else {
+                toggleBtn.innerHTML = '◀';
+                toggleBtn.setAttribute('title', 'Thu nhỏ sidebar');
+            }
+            setTimeout(handleResize, 220);
+        });
+
+        // ===== DROP ON CANVAS =====
+        const stageContainerEl = document.getElementById('rl-stage-container');
+        stageContainerEl.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'copy';
+        });
+        stageContainerEl.addEventListener('drop', (e) => {
+            e.preventDefault();
+            const raw = e.dataTransfer.getData('application/json');
+            if (!raw) return;
+            const { type, item } = JSON.parse(raw);
+
+            // In wall view, we only allow dropping assets (Racks or walls make no sense on a wall elevation)
+            if (currentViewMode === 'wall' && type !== 'asset') {
+                showToast('Chỉ có thể đặt Asset (Tài sản) lên tường!', 'warning');
+                return;
+            }
+
+            if (type === 'wall') {
+                wallCounter++;
+                item.id = wallCounter;
+            }
+
+            const key = `${type}_${item.id}`;
+            if (placedObjects.has(key)) return;
+
+            const rect = stageContainerEl.getBoundingClientRect();
+            const scale = getScale();
+            let worldX = (e.clientX - rect.left - stage.x()) / scale;
+            let worldY = (e.clientY - rect.top - stage.y()) / scale;
+
+            if (currentViewMode === 'wall') {
+                const wallBgGroup = mainLayer.findOne('.wall-bg-group');
+                if (!wallBgGroup) return;
+                
+                const wallBgRect = wallBgGroup.findOne('.wall-bg-rect');
+                const wallLength = wallBgRect.width();
+                const wallHeight = wallBgRect.height();
+
+                let localX = worldX - wallBgGroup.x();
+                let localY = worldY - wallBgGroup.y();
+                
+                if (snapToGrid) {
+                    localX = Math.round(localX / gridSize) * gridSize;
+                    localY = Math.round(localY / gridSize) * gridSize;
+                }
+                
+                localX = Math.max(0, Math.min(wallLength - 110, localX));
+                localY = Math.max(0, Math.min(wallHeight - 70, localY));
+
+                addAssetToWallCanvas(item, localX, localY);
+            } else {
+                worldX = snapValue(worldX);
+                worldY = snapValue(worldY);
+                worldX = Math.max(0, worldX);
+                worldY = Math.max(0, worldY);
+
+                if (type === 'rack') {
+                    addRackToCanvas(item, worldX, worldY, 0, 0);
+                } else if (type === 'asset') {
+                    addAssetToCanvas(item, worldX, worldY, 0, 0);
+                } else if (type === 'wall') {
+                    addWallToCanvas(item, worldX, worldY, 0, 0);
+                }
+            }
+            mainLayer.batchDraw();
+            renderSidebarLists();
+
+            // Hide empty state when objects are added
+            emptyState.style.display = 'none';
+        });
+
+        // ===== ADD RACK TO CANVAS =====
+        function addRackToCanvas(rackInfo, x, y, rotation, zIndex) {
+            const key = `rack_${rackInfo.id}`;
+            const width = 105;
+            const height = 140;
+            const status = rackInfo.status || 'active';
+            const freePercentage = rackInfo.free_percentage !== undefined ? rackInfo.free_percentage : 100;
+            const color = getRackColorByUtilization(freePercentage);
+            const name = rackInfo.name || `Rack #${rackInfo.id}`;
+            const uHeight = rackInfo.u_height || 42;
+
+            const group = new Konva.Group({
+                x: x, y: y, rotation: rotation, draggable: true,
+                name: 'layout-object',
+                dragBoundFunc: function (pos) {
+                    return { x: Math.max(stage.x(), pos.x), y: Math.max(stage.y(), pos.y) };
+                },
+            });
+            group.setAttr('objectType', 'rack');
+            group.setAttr('objectId', rackInfo.id);
+            group.setAttr('zIndex', zIndex);
+            group.setAttr('baseX', x);
+            group.setAttr('baseY', y);
+
+            const shadow = new Konva.Rect({ width, height, fill: 'rgba(0,0,0,0.25)', cornerRadius: 6, x: 3, y: 3 });
+            const body = new Konva.Rect({ width, height, fill: '#1e2030', stroke: color, strokeWidth: 2, cornerRadius: 6, name: 'rack-body' });
+            const accent = new Konva.Rect({ width, height: 6, fill: color, cornerRadius: [6, 6, 0, 0] });
+
+            const iconBg = new Konva.Rect({ x: (width - 30) / 2, y: 20, width: 30, height: 50, fill: color, cornerRadius: 4 });
+            const unitLinesGroup = new Konva.Group();
+            for (let i = 0; i < 6; i++) {
+                unitLinesGroup.add(new Konva.Line({
+                    points: [(width - 22) / 2, 26 + i * 8, (width + 22) / 2, 26 + i * 8],
+                    stroke: 'rgba(255,255,255,0.25)', strokeWidth: 1,
+                }));
+            }
+
+            const pctText = new Konva.Text({
+                text: `${freePercentage}%`, x: (width - 30) / 2, y: 20, width: 30, height: 50,
+                fontSize: 9, fontFamily: 'Inter, sans-serif', fontStyle: 'bold', fill: '#ffffff',
+                align: 'center', verticalAlign: 'middle',
+                shadowColor: 'rgba(0,0,0,0.5)', shadowBlur: 2, shadowOffset: { x: 0.5, y: 0.5 }
+            });
+
+            const nameText = new Konva.Text({
+                text: name, width: 51, x: 27, y: 70,
+                fontSize: 12, fontFamily: 'Inter, sans-serif', fontStyle: 'bold', fill: '#e4e7f1',
+                align: 'center', ellipsis: true, wrap: 'none',
+            });
+
+            const uText = new Konva.Text({
+                text: `${uHeight}U`, width: 51, x: 27, y: 86,
+                fontSize: 10, fontFamily: 'Inter, sans-serif', fill: '#8b90a5', align: 'center',
+            });
+
+            const statusText = new Konva.Text({
+                text: status.toUpperCase(), width: 51, x: 27, y: 102,
+                fontSize: 9, fontFamily: 'Inter, sans-serif', fontStyle: 'bold', fill: color, align: 'center',
+            });
+
+            const detailsGroup = new Konva.Group({ name: 'rack-details' });
+            detailsGroup.add(accent, iconBg, unitLinesGroup, pctText, nameText, uText, statusText);
+            group.add(shadow, body, detailsGroup);
+
+            // Smart Lock indicators on rack
+            const drawLockOnRack = (xOffset, yOffset, lockStatus, labelText) => {
+                let lockColor = '#5a607c';
+                if (lockStatus === 'active') lockColor = '#2ecc71';
+                else if (lockStatus === 'inactive') lockColor = '#e74c3c';
+
+                const lockWidth = 18;
+                const lockHeight = 40;
+                const lockGroup = new Konva.Group({ name: 'rack-lock-group' });
+
+                const lockBody = new Konva.Rect({
+                    x: xOffset, y: yOffset, width: lockWidth, height: lockHeight,
+                    fill: '#131c26', stroke: lockColor, strokeWidth: 1.5, cornerRadius: 3.5,
+                });
+                const lockLed = new Konva.Circle({
+                    x: xOffset + 9, y: yOffset + 5, radius: 1.1,
+                    fill: lockColor, shadowColor: lockColor, shadowBlur: 3, shadowOpacity: 0.9,
+                });
+                const keypad = new Konva.Group();
+                for (let r = 0; r < 3; r++) {
+                    for (let c = 0; c < 2; c++) {
+                        keypad.add(new Konva.Circle({
+                            x: xOffset + 6.5 + c * 5, y: yOffset + 10 + r * 4,
+                            radius: 0.6, fill: '#ffffff', opacity: 0.7,
+                        }));
+                    }
+                }
+                const handleJoint = new Konva.Circle({ x: xOffset + 9, y: yOffset + 25, radius: 1.5, fill: '#95a5a6' });
+                const handleBar = new Konva.Rect({ x: xOffset + 9, y: yOffset + 24, width: 8, height: 2, fill: '#95a5a6', cornerRadius: 0.5 });
+                const reader = new Konva.Rect({
+                    x: xOffset + 5.5, y: yOffset + 31, width: 7, height: 4,
+                    fill: 'rgba(255,255,255,0.06)', stroke: 'rgba(255,255,255,0.15)', strokeWidth: 0.4, cornerRadius: 0.4,
+                });
+                const label = new Konva.Text({
+                    x: xOffset, y: yOffset - 10, width: lockWidth, text: labelText,
+                    fontSize: 8, fontFamily: 'Inter, sans-serif', fontStyle: 'bold', fill: '#ffffff', align: 'center',
+                });
+
+                lockGroup.add(lockBody, lockLed, keypad, handleJoint, handleBar, reader, label);
+                detailsGroup.add(lockGroup);
+
+                lockGroup.on('mouseenter', (e) => {
+                    e.cancelBubble = true;
+                    stageContainer.style.cursor = 'pointer';
+                    lockBody.strokeWidth(2.5);
+                    lockBody.shadowColor(lockColor);
+                    lockBody.shadowBlur(8);
+                    lockBody.shadowOpacity(0.8);
+                    mainLayer.batchDraw();
+
+                    const face = labelText === 'F' ? 'front' : 'rear';
+                    const smartLockInfo = allSmartLocks.find(s => s.rack_id === rackInfo.id && s.rack_face === face);
+                    let contentHtml = '';
+                    if (smartLockInfo) {
+                        const statusColor = SMARTLOCK_STATUS_COLORS[smartLockInfo.status] || '#00d2d3';
+                        contentHtml = `
+                            <div class="rl-tooltip-title">🔒 ${smartLockInfo.name} (${labelText === 'F' ? 'Mặt trước' : 'Mặt sau'})</div>
+                            <div class="rl-tooltip-row"><span class="rl-tooltip-label">Mã khóa:</span><span class="rl-tooltip-val">${smartLockInfo.code}</span></div>
+                            <div class="rl-tooltip-row"><span class="rl-tooltip-label">Loại thiết bị:</span><span class="rl-tooltip-val">${smartLockInfo.device_type}</span></div>
+                            <div class="rl-tooltip-row"><span class="rl-tooltip-label">Trạng thái:</span><span class="rl-tooltip-badge" style="background:${statusColor}">${smartLockInfo.status}</span></div>
+                            <div class="rl-tooltip-row"><span class="rl-tooltip-label">Hãng sản xuất:</span><span class="rl-tooltip-val">${smartLockInfo.manufacturer || '-'}</span></div>
+                            <div class="rl-tooltip-row" style="margin-top:6px; font-style:italic; color:var(--rl-text-muted);"><span>Nhấp đúp để xem chi tiết khóa</span></div>
+                        `;
+                    } else {
+                        contentHtml = `
+                            <div class="rl-tooltip-title">🔒 Smart Lock (${labelText === 'F' ? 'Mặt trước' : 'Mặt sau'})</div>
+                            <div class="rl-tooltip-row"><span class="rl-tooltip-label">Trạng thái:</span><span class="rl-tooltip-val" style="color:var(--rl-text-muted);">Không gắn khóa</span></div>
+                        `;
+                    }
+                    if (contentHtml && tooltipEl) {
+                        tooltipEl.innerHTML = contentHtml;
+                        tooltipEl.classList.add('show');
+                    }
+                });
+
+                lockGroup.on('mousemove', (e) => {
+                    e.cancelBubble = true;
+                    const pointer = stage.getPointerPosition();
+                    if (pointer && tooltipEl) {
+                        tooltipEl.style.left = (pointer.x + 15) + 'px';
+                        tooltipEl.style.top = (pointer.y + 15) + 'px';
+                    }
+                });
+
+                lockGroup.on('mouseleave', (e) => {
+                    e.cancelBubble = true;
+                    lockBody.strokeWidth(1.5);
+                    lockBody.shadowBlur(0);
+                    lockBody.shadowOpacity(0);
+                    mainLayer.batchDraw();
+                    if (tooltipEl) tooltipEl.classList.remove('show');
+                    group.fire('mouseenter');
+                });
+
+                lockGroup.on('dblclick dbltap', (e) => {
+                    e.cancelBubble = true;
+                    const face = labelText === 'F' ? 'front' : 'rear';
+                    const smartLockInfo = allSmartLocks.find(s => s.rack_id === rackInfo.id && s.rack_face === face);
+                    if (smartLockInfo) {
+                        window.open(`/plugins/netbox-smart-lock/smart-locks/${smartLockInfo.id}/`, '_blank');
+                    }
+                });
+            };
+
+            drawLockOnRack(83, 120, rackInfo.front_status, 'F');
+            drawLockOnRack(4, 120, rackInfo.rear_status, 'R');
+
+            const lodIcon = new Konva.Text({
+                text: '🗄️',
+                x: 0, y: 0, width, height,
+                fontSize: 48, fontFamily: 'Inter, sans-serif',
+                fill: color,
+                align: 'center', verticalAlign: 'middle',
+                name: 'rack-lod-icon',
+                visible: false
+            });
+            group.add(lodIcon);
+
+            setupGroupInteractions(group);
+            mainLayer.add(group);
+            placedObjects.set(key, group);
+        }
+
+        // ===== ADD ASSET TO CANVAS =====
+        function addAssetToCanvas(assetInfo, x, y, rotation, zIndex, customWidth, customHeight) {
+            const key = `asset_${assetInfo.id}`;
+            const width = customWidth || 110;
+            const height = customHeight || 70;
+            const status = assetInfo.status || 'active';
+            const color = ASSET_STATUS_COLORS[status] || '#e67e22';
+            const name = assetInfo.name || `Asset #${assetInfo.id}`;
+            const assetCode = assetInfo.asset_code || '';
+            const groupName = assetInfo.asset_group || '';
+
+            const group = new Konva.Group({
+                x, y, rotation, draggable: true, name: 'layout-object',
+                dragBoundFunc: function (pos) {
+                    return { x: Math.max(stage.x(), pos.x), y: Math.max(stage.y(), pos.y) };
+                },
+            });
+            group.setAttr('objectType', 'asset');
+            group.setAttr('objectId', assetInfo.id);
+            group.setAttr('zIndex', zIndex);
+            group.setAttr('baseX', x);
+            group.setAttr('baseY', y);
+            group.setAttr('assetWidth', width);
+            group.setAttr('assetHeight', height);
+
+            function buildAssetShapes(w, h) {
+                group.destroyChildren();
+                
+                const shadow = new Konva.Rect({ width: w, height: h, fill: 'rgba(0,0,0,0.2)', cornerRadius: 6, x: 2, y: 2 });
+                const body = new Konva.Rect({ width: w, height: h, fill: '#2c2520', stroke: color, strokeWidth: 1.5, cornerRadius: 6, name: 'asset-body' });
+                
+                const detailsGroup = new Konva.Group({ name: 'asset-details' });
+                const accentBar = new Konva.Rect({ x: 0, y: 0, width: 4, height: h, fill: color, cornerRadius: [6, 0, 0, 6] });
+                const nameText = new Konva.Text({ text: name, x: 12, y: 10, width: w - 18, fontSize: 11, fontFamily: 'Inter, sans-serif', fontStyle: 'bold', fill: '#e4e7f1', ellipsis: true, wrap: 'none' });
+                const codeText = new Konva.Text({ text: assetCode, x: 12, y: 26, width: w - 18, fontSize: 9, fontFamily: 'Inter, sans-serif', fill: '#8b90a5', ellipsis: true, wrap: 'none' });
+                const groupText = new Konva.Text({ text: groupName, x: 12, y: 40, width: w - 18, fontSize: 9, fontFamily: 'Inter, sans-serif', fill: color, ellipsis: true, wrap: 'none' });
+                const statusText = new Konva.Text({ text: status.toUpperCase(), x: 12, y: 54, fontSize: 8, fontFamily: 'Inter, sans-serif', fontStyle: 'bold', fill: 'rgba(255,255,255,0.3)' });
+                
+                if (h < 35) {
+                    codeText.visible(false);
+                    groupText.visible(false);
+                    statusText.visible(false);
+                } else if (h < 50) {
+                    groupText.visible(false);
+                    statusText.visible(false);
+                }
+                
+                detailsGroup.add(accentBar, nameText, codeText, groupText, statusText);
+                group.add(shadow, body, detailsGroup);
+
+                const lodIcon = new Konva.Text({
+                    text: '📦',
+                    x: 0, y: 0, width: w, height: h,
+                    fontSize: Math.min(w, h) * 0.5, fontFamily: 'Inter, sans-serif',
+                    fill: color,
+                    align: 'center', verticalAlign: 'middle',
+                    name: 'asset-lod-icon',
+                    visible: false
+                });
+                group.add(lodIcon);
+            }
+
+            buildAssetShapes(width, height);
+
+            group.on('transformend', () => {
+                const scaleX = group.scaleX();
+                const scaleY = group.scaleY();
+                
+                let newW = Math.max(40, Math.round(group.getAttr('assetWidth') * scaleX));
+                let newH = Math.max(20, Math.round(group.getAttr('assetHeight') * scaleY));
+                
+                if (snapToGrid) {
+                    newW = Math.round(newW / gridSize) * gridSize;
+                    newH = Math.round(newH / gridSize) * gridSize;
+                }
+                
+                group.scaleX(1);
+                group.scaleY(1);
+                group.setAttr('assetWidth', newW);
+                group.setAttr('assetHeight', newH);
+                group.setAttr('baseX', group.x());
+                group.setAttr('baseY', group.y());
+                buildAssetShapes(newW, newH);
+                mainLayer.batchDraw();
+            });
+
+            setupGroupInteractions(group);
+            mainLayer.add(group);
+            placedObjects.set(key, group);
+        }
+
+        // ===== ADD WALL TO CANVAS =====
+        function addWallToCanvas(wallInfo, x, y, rotation, zIndex) {
+            const key = `wall_${wallInfo.id}`;
+            const wt = wallInfo.wallType || 'h';
+            const isVertical = (wt === 'v');
+            const wallLength = 160;
+            const wallThickness = 15;
+
+            let width = wallInfo.customWidth || (isVertical ? wallThickness : wallLength);
+            let height = wallInfo.customHeight || (isVertical ? wallLength : wallThickness);
+            const wallNumber = wallInfo.id;
+
+            const group = new Konva.Group({
+                x, y, rotation, draggable: true, name: 'layout-object',
+                dragBoundFunc: function (pos) {
+                    return { x: Math.max(stage.x(), pos.x), y: Math.max(stage.y(), pos.y) };
+                },
+            });
+            group.setAttr('objectType', 'wall');
+            group.setAttr('objectId', wallInfo.id);
+            group.setAttr('wallType', wt);
+            group.setAttr('wallWidth', width);
+            group.setAttr('wallHeight', height);
+            group.setAttr('zIndex', zIndex);
+            group.setAttr('baseX', x);
+            group.setAttr('baseY', y);
+
+            function buildWallShapes(w, h) {
+                group.destroyChildren();
+                group.add(new Konva.Rect({ width: w, height: h, fill: 'rgba(0,0,0,0.3)', cornerRadius: 3, x: 3, y: 3 }));
+                group.add(new Konva.Rect({ width: w, height: h, fill: '#1b202e', stroke: '#4b5563', strokeWidth: 2, cornerRadius: 3, name: 'wall-body' }));
+
+                const pg = new Konva.Group({ clipX: 0, clipY: 0, clipWidth: w, clipHeight: h, listening: false });
+                const hatchSpacing = 16;
+                if (h > w) {
+                    for (let yOffset = -w; yOffset < h; yOffset += hatchSpacing) {
+                        pg.add(new Konva.Line({ points: [0, yOffset + w, w, yOffset], stroke: 'rgba(255, 255, 255, 0.08)', strokeWidth: 1.5, listening: false }));
+                    }
+                } else {
+                    for (let xOffset = -h; xOffset < w; xOffset += hatchSpacing) {
+                        pg.add(new Konva.Line({ points: [xOffset, h, xOffset + h, 0], stroke: 'rgba(255, 255, 255, 0.08)', strokeWidth: 1.5, listening: false }));
+                    }
+                }
+                group.add(pg);
+
+                group.add(new Konva.Text({
+                    text: `W${wallNumber}`, x: 0, y: 0, width: w, height: h,
+                    fontSize: Math.min(w, h) < 14 ? 8 : 10,
+                    fontFamily: 'Inter, sans-serif', fontStyle: 'bold',
+                    fill: 'rgba(255, 255, 255, 0.6)', align: 'center', verticalAlign: 'middle',
+                    shadowColor: 'rgba(0,0,0,0.6)', shadowBlur: 2, shadowOffset: { x: 0.5, y: 0.5 }, listening: false,
+                }));
+            }
+
+            buildWallShapes(width, height);
+
+            group.on('transformend', () => {
+                const scaleX = group.scaleX();
+                const scaleY = group.scaleY();
+
+                let newW, newH;
+                if (wt === 'v') {
+                    newW = wallThickness;
+                    newH = Math.max(20, Math.round(group.getAttr('wallHeight') * scaleY));
+                } else {
+                    newW = Math.max(20, Math.round(group.getAttr('wallWidth') * scaleX));
+                    newH = wallThickness;
+                }
+
+                if (snapToGrid) {
+                    if (wt === 'v') newH = Math.round(newH / gridSize) * gridSize;
+                    else newW = Math.round(newW / gridSize) * gridSize;
+                }
+
+                const currentX = group.x();
+                const currentY = group.y();
+                const snapThreshold = 15;
+                const otherWalls = [];
+                mainLayer.find('.layout-object').forEach(other => {
+                    if (other !== group && other.getAttr('objectType') === 'wall') {
+                        otherWalls.push({
+                            x: other.getAttr('baseX') !== undefined ? other.getAttr('baseX') : other.x(),
+                            y: other.getAttr('baseY') !== undefined ? other.getAttr('baseY') : other.y(),
+                            w: other.getAttr('wallWidth'),
+                            h: other.getAttr('wallHeight'),
+                            type: other.getAttr('wallType')
+                        });
+                    }
+                });
+
+                let snapped = false;
+                for (const other of otherWalls) {
+                    if (wt === 'h') {
+                        if (Math.abs((currentX + newW) - other.x) < snapThreshold) { newW = other.x - currentX; snapped = true; }
+                        else if (Math.abs((currentX + newW) - (other.x + other.w)) < snapThreshold) { newW = (other.x + other.w) - currentX; snapped = true; }
+                    } else {
+                        if (Math.abs((currentY + newH) - other.y) < snapThreshold) { newH = other.y - currentY; snapped = true; }
+                        else if (Math.abs((currentY + newH) - (other.y + other.h)) < snapThreshold) { newH = (other.y + other.h) - currentY; snapped = true; }
+                    }
+                    if (snapped) break;
+                }
+
+                group.scaleX(1);
+                group.scaleY(1);
+                group.setAttr('wallWidth', newW);
+                group.setAttr('wallHeight', newH);
+                group.setAttr('baseX', group.x());
+                group.setAttr('baseY', group.y());
+                buildWallShapes(newW, newH);
+                mainLayer.batchDraw();
+            });
+
+            setupGroupInteractions(group);
+            mainLayer.add(group);
+            placedObjects.set(key, group);
+        }
+
+        // Helper to animate zoom-in/out on hover
+        function animateHover(group, isHover) {
+            const objType = group.getAttr('objectType');
+            if (objType === 'wall') return;
+
+            let width = 110, height = 70;
+            if (objType === 'rack') { width = 105; height = 140; }
+            const scaleVal = isHover ? 1.05 : 1.0;
+            const baseX = group.getAttr('baseX');
+            const baseY = group.getAttr('baseY');
+            const rad = (group.rotation() * Math.PI) / 180;
+            const cos = Math.cos(rad);
+            const sin = Math.sin(rad);
+            const dx = (width / 2) * cos - (height / 2) * sin;
+            const dy = (width / 2) * sin + (height / 2) * cos;
+            const targetX = Math.max(0, baseX - (scaleVal - 1) * dx);
+            const targetY = Math.max(0, baseY - (scaleVal - 1) * dy);
+
+            if (group._hoverTween) { group._hoverTween.destroy(); group._hoverTween = null; }
+            group._hoverTween = new Konva.Tween({
+                node: group, duration: 0.15, easing: Konva.Easings.EaseOut,
+                scaleX: scaleVal, scaleY: scaleVal, x: targetX, y: targetY,
+                onUpdate: () => { mainLayer.batchDraw(); }
+            });
+            group._hoverTween.play();
+        }
+
+        function deactivateGroupHover(group) {
+            const objType = group.getAttr('objectType');
+            if (objType === 'wall') return;
+            const body = group.findOne('.' + objType + '-body');
+            if (body) {
+                body.strokeWidth(objType === 'rack' ? 2 : 1.5);
+                body.shadowBlur(0);
+                body.shadowOpacity(0);
+            }
+            animateHover(group, false);
+        }
+
+        // ===== GROUP INTERACTIONS =====
+        function setupGroupInteractions(group) {
+            group.on('dragstart', () => {
+                const objType = group.getAttr('objectType');
+                if (group._hoverTween) { group._hoverTween.destroy(); group._hoverTween = null; }
+                group.scale({ x: 1, y: 1 });
+                group.x(group.getAttr('baseX'));
+                group.y(group.getAttr('baseY'));
+                if (objType !== 'wall') {
+                    const body = group.findOne('.' + objType + '-body');
+                    if (body) { body.strokeWidth(objType === 'rack' ? 2 : 1.5); body.shadowBlur(0); body.shadowOpacity(0); }
+                    if (tooltipEl) tooltipEl.classList.remove('show');
+                }
+                mainLayer.batchDraw();
+            });
+
+            group.on('dragend', () => {
+                const objType = group.getAttr('objectType');
+                let currentX = group.x();
+                let currentY = group.y();
+                if (snapToGrid) { currentX = snapValue(currentX); currentY = snapValue(currentY); }
+                currentX = Math.max(0, currentX);
+                currentY = Math.max(0, currentY);
+
+                // Wall-to-wall snapping
+                if (objType === 'wall') {
+                    const snapThreshold = 15;
+                    const otherWalls = [];
+                    mainLayer.find('.layout-object').forEach(other => {
+                        if (other !== group && other.getAttr('objectType') === 'wall') {
+                            otherWalls.push({
+                                x: other.getAttr('baseX') !== undefined ? other.getAttr('baseX') : other.x(),
+                                y: other.getAttr('baseY') !== undefined ? other.getAttr('baseY') : other.y(),
+                                w: other.getAttr('wallWidth'), h: other.getAttr('wallHeight'), type: other.getAttr('wallType')
+                            });
+                        }
+                    });
+
+                    const myW = group.getAttr('wallWidth');
+                    const myH = group.getAttr('wallHeight');
+                    const myType = group.getAttr('wallType');
+
+                    const myPoints = [];
+                    if (myType === 'h') {
+                        myPoints.push({ x: currentX, y: currentY, name: 'left' });
+                        myPoints.push({ x: currentX + myW, y: currentY, name: 'right' });
+                    } else {
+                        myPoints.push({ x: currentX, y: currentY, name: 'top' });
+                        myPoints.push({ x: currentX, y: currentY + myH, name: 'bottom' });
+                    }
+
+                    let snapped = false;
+                    for (const other of otherWalls) {
+                        const otherPoints = [];
+                        if (other.type === 'h') {
+                            otherPoints.push({ x: other.x, y: other.y });
+                            otherPoints.push({ x: other.x + other.w, y: other.y });
+                        } else {
+                            otherPoints.push({ x: other.x, y: other.y });
+                            otherPoints.push({ x: other.x, y: other.y + other.h });
+                        }
+
+                        for (const myPt of myPoints) {
+                            for (const otherPt of otherPoints) {
+                                const dist = Math.hypot(myPt.x - otherPt.x, myPt.y - otherPt.y);
+                                if (dist < snapThreshold) {
+                                    if (myPt.name === 'left' || myPt.name === 'top') { currentX = otherPt.x; currentY = otherPt.y; }
+                                    else if (myPt.name === 'right') { currentX = otherPt.x - myW; currentY = otherPt.y; }
+                                    else if (myPt.name === 'bottom') { currentX = otherPt.x; currentY = otherPt.y - myH; }
+                                    snapped = true; break;
+                                }
+                            }
+                            if (snapped) break;
+                        }
+                        if (snapped) break;
+
+                        if (myType === 'h' && other.type === 'v') {
+                            if (Math.abs(currentX - other.x) < snapThreshold && currentY >= other.y - snapThreshold && currentY <= other.y + other.h + snapThreshold) {
+                                currentX = other.x;
+                                if (Math.abs(currentY - other.y) < snapThreshold) currentY = other.y;
+                                else if (Math.abs(currentY - (other.y + other.h)) < snapThreshold) currentY = other.y + other.h;
+                                snapped = true;
+                            } else if (Math.abs((currentX + myW) - other.x) < snapThreshold && currentY >= other.y - snapThreshold && currentY <= other.y + other.h + snapThreshold) {
+                                currentX = other.x - myW;
+                                if (Math.abs(currentY - other.y) < snapThreshold) currentY = other.y;
+                                else if (Math.abs(currentY - (other.y + other.h)) < snapThreshold) currentY = other.y + other.h;
+                                snapped = true;
+                            }
+                        }
+                        if (myType === 'v' && other.type === 'h') {
+                            if (Math.abs(currentY - other.y) < snapThreshold && currentX >= other.x - snapThreshold && currentX <= other.x + other.w + snapThreshold) {
+                                currentY = other.y;
+                                if (Math.abs(currentX - other.x) < snapThreshold) currentX = other.x;
+                                else if (Math.abs(currentX - (other.x + other.w)) < snapThreshold) currentX = other.x + other.w;
+                                snapped = true;
+                            } else if (Math.abs((currentY + myH) - other.y) < snapThreshold && currentX >= other.x - snapThreshold && currentX <= other.x + other.w + snapThreshold) {
+                                currentY = other.y - myH;
+                                if (Math.abs(currentX - other.x) < snapThreshold) currentX = other.x;
+                                else if (Math.abs(currentX - (other.x + other.w)) < snapThreshold) currentX = other.x + other.w;
+                                snapped = true;
+                            }
+                        }
+                        if (snapped) break;
+                    }
+                }
+
+                group.x(currentX);
+                group.y(currentY);
+                group.setAttr('baseX', currentX);
+                group.setAttr('baseY', currentY);
+
+                if (objType !== 'wall') {
+                    const body = group.findOne('.' + objType + '-body');
+                    if (body) { body.strokeWidth(objType === 'rack' ? 2 : 1.5); body.shadowBlur(0); body.shadowOpacity(0); }
+                    if (tooltipEl) tooltipEl.classList.remove('show');
+                }
+                mainLayer.batchDraw();
+            });
+
+            group.on('click tap', (e) => { e.cancelBubble = true; selectNode(group); });
+
+            group.on('contextmenu', (e) => {
+                e.evt.preventDefault(); e.cancelBubble = true;
+                selectNode(group);
+                showContextMenu(e.evt.clientX, e.evt.clientY);
+            });
+
+            // Hover highlight & Tooltip
+            group.on('mouseenter', (e) => {
+                const objType = group.getAttr('objectType');
+                if (objType === 'wall') return;
+
+                mainLayer.find('.layout-object').forEach(otherGroup => {
+                    if (otherGroup !== group) deactivateGroupHover(otherGroup);
+                });
+                stageContainer.style.cursor = 'pointer';
+
+                const body = group.findOne('.' + objType + '-body');
+                if (body) {
+                    const origStroke = body.stroke();
+                    body.strokeWidth(objType === 'rack' ? 3.5 : 2.5);
+                    body.shadowColor(origStroke);
+                    body.shadowBlur(12);
+                    body.shadowOpacity(0.6);
+                    body.shadowOffset({ x: 0, y: 0 });
+                }
+                animateHover(group, true);
+
+                const objId = group.getAttr('objectId');
+                let contentHtml = '';
+                if (objType === 'rack') {
+                    const rackInfo = allRacks.find(r => r.id === objId);
+                    if (rackInfo) {
+                        const freePercentage = rackInfo.free_percentage !== undefined ? rackInfo.free_percentage : 100;
+                        const freeU = rackInfo.free_u !== undefined ? rackInfo.free_u : rackInfo.u_height;
+                        const rackColor = getRackColorByUtilization(freePercentage);
+                        contentHtml = `
+                        <div class="rl-tooltip-title">🗄️ ${rackInfo.name}</div>
+                        <div class="rl-tooltip-row"><span class="rl-tooltip-label">Tổng chiều cao:</span><span class="rl-tooltip-val">${rackInfo.u_height}U</span></div>
+                        <div class="rl-tooltip-row"><span class="rl-tooltip-label">Không gian trống:</span><span class="rl-tooltip-val" style="color:${rackColor}; font-weight:bold;">${freeU}U / ${rackInfo.u_height}U (${freePercentage}%)</span></div>
+                        <div class="rl-tooltip-row"><span class="rl-tooltip-label">Trạng thái:</span><span class="rl-tooltip-badge" style="background:${RACK_STATUS_COLORS[rackInfo.status] || '#6c63ff'}">${rackInfo.status}</span></div>
+                        <div class="rl-tooltip-row"><span class="rl-tooltip-label">Vị trí:</span><span class="rl-tooltip-val">X: ${Math.round(group.getAttr('baseX'))}, Y: ${Math.round(group.getAttr('baseY'))}</span></div>
+                        <div class="rl-tooltip-row" style="margin-top:6px; font-style:italic; color:var(--rl-text-muted);"><span>Nhấp đúp để xem chi tiết</span></div>
+                    `;
+                    }
+                } else if (objType === 'asset') {
+                    const assetInfo = allAssets.find(a => a.id === objId);
+                    if (assetInfo) {
+                        const statusColor = ASSET_STATUS_COLORS[assetInfo.status] || '#e67e22';
+                        contentHtml = `
+                        <div class="rl-tooltip-title">📦 ${assetInfo.name}</div>
+                        <div class="rl-tooltip-row"><span class="rl-tooltip-label">Mã tài sản:</span><span class="rl-tooltip-val">${assetInfo.asset_code}</span></div>
+                        <div class="rl-tooltip-row"><span class="rl-tooltip-label">Nhóm:</span><span class="rl-tooltip-val">${assetInfo.asset_group}</span></div>
+                        <div class="rl-tooltip-row"><span class="rl-tooltip-label">Trạng thái:</span><span class="rl-tooltip-badge" style="background:${statusColor}">${assetInfo.status}</span></div>
+                        <div class="rl-tooltip-row"><span class="rl-tooltip-label">Vị trí:</span><span class="rl-tooltip-val">X: ${Math.round(group.getAttr('baseX'))}, Y: ${Math.round(group.getAttr('baseY'))}</span></div>
+                        <div class="rl-tooltip-row" style="margin-top:6px; font-style:italic; color:var(--rl-text-muted);"><span>Nhấp đúp để xem chi tiết</span></div>
+                    `;
+                    }
+                } else if (objType === 'smartlock') {
+                    const smartLockInfo = allSmartLocks.find(s => s.id === objId);
+                    if (smartLockInfo) {
+                        const statusColor = SMARTLOCK_STATUS_COLORS[smartLockInfo.status] || '#00d2d3';
+                        contentHtml = `
+                        <div class="rl-tooltip-title">🔒 ${smartLockInfo.name}</div>
+                        <div class="rl-tooltip-row"><span class="rl-tooltip-label">Mã khóa:</span><span class="rl-tooltip-val">${smartLockInfo.code}</span></div>
+                        <div class="rl-tooltip-row"><span class="rl-tooltip-label">Loại thiết bị:</span><span class="rl-tooltip-val">${smartLockInfo.device_type}</span></div>
+                        <div class="rl-tooltip-row"><span class="rl-tooltip-label">Hãng sản xuất:</span><span class="rl-tooltip-val">${smartLockInfo.manufacturer || '-'}</span></div>
+                        <div class="rl-tooltip-row"><span class="rl-tooltip-label">Trạng thái:</span><span class="rl-tooltip-badge" style="background:${statusColor}">${smartLockInfo.status}</span></div>
+                        <div class="rl-tooltip-row"><span class="rl-tooltip-label">Vị trí:</span><span class="rl-tooltip-val">X: ${Math.round(group.getAttr('baseX'))}, Y: ${Math.round(group.getAttr('baseY'))}</span></div>
+                        <div class="rl-tooltip-row" style="margin-top:6px; font-style:italic; color:var(--rl-text-muted);"><span>Nhấp đúp để xem chi tiết</span></div>
+                    `;
+                    }
+                }
+
+                if (contentHtml && tooltipEl) {
+                    tooltipEl.innerHTML = contentHtml;
+                    tooltipEl.classList.add('show');
+                }
+            });
+
+            group.on('mousemove', (e) => {
+                const pointer = stage.getPointerPosition();
+                if (pointer && tooltipEl) {
+                    tooltipEl.style.left = (pointer.x + 15) + 'px';
+                    tooltipEl.style.top = (pointer.y + 15) + 'px';
+                }
+            });
+
+            group.on('mouseleave', () => {
+                const objType = group.getAttr('objectType');
+                if (objType === 'wall') return;
+
+                const pos = stage.getPointerPosition();
+                const intersection = pos ? stage.getIntersection(pos) : null;
+                if (intersection && (intersection.getParent() === transformer || intersection === transformer)) {
+                    // Let transformer handle cursor
+                } else {
+                    stageContainer.style.cursor = 'grab';
+                }
+                deactivateGroupHover(group);
+                if (tooltipEl) tooltipEl.classList.remove('show');
+            });
+
+            // Double-click to view detail in NetBox or open modal
+            group.on('dblclick dbltap', () => {
+                const objType = group.getAttr('objectType');
+                const objId = group.getAttr('objectId');
+                if (objType === 'wall') {
+                    switchToWallView(group);
+                } else if (objType === 'rack') {
+                    window.open(`/dcim/racks/${objId}/`, '_blank');
+                } else if (objType === 'asset') {
+                    window.open(`/plugins/netbox-asset-management/assets/${objId}/`, '_blank');
+                } else if (objType === 'smartlock') {
+                    window.open(`/plugins/netbox-smart-lock/smart-locks/${objId}/`, '_blank');
+                }
+            });
+        }
+
+        // ===== SELECTION =====
+        function selectNode(node) {
+            selectedNode = node;
+            const objType = node.getAttr('objectType');
+            const isWall = (objType === 'wall');
+            const isAsset = (objType === 'asset');
+            transformer.resizeEnabled(isWall || isAsset);
+            transformer.rotateEnabled(!isWall && currentViewMode !== 'wall');
+
+            if (isWall) {
+                const wt = node.getAttr('wallType');
+                if (wt === 'v') transformer.enabledAnchors(['top-center', 'bottom-center']);
+                else transformer.enabledAnchors(['middle-left', 'middle-right']);
+            } else if (isAsset) {
+                transformer.enabledAnchors(['top-left', 'top-center', 'top-right', 'middle-right', 'bottom-right', 'bottom-center', 'bottom-left', 'middle-left']);
+            } else {
+                transformer.enabledAnchors([]);
+            }
+
+            transformer.nodes([node]);
+            transformer.moveToTop();
+            mainLayer.batchDraw();
+        }
+
+        function deselectAll() {
+            selectedNode = null;
+            transformer.nodes([]);
+            mainLayer.batchDraw();
+            hideContextMenu();
+        }
+
+        // ===== CONTEXT MENU =====
+        function showContextMenu(x, y) {
+            contextMenu.style.left = x + 'px';
+            contextMenu.style.top = y + 'px';
+            contextMenu.classList.add('show');
+        }
+        function hideContextMenu() {
+            contextMenu.classList.remove('show');
+        }
+        document.addEventListener('click', (e) => {
+            if (!contextMenu.contains(e.target)) hideContextMenu();
+        });
+
+        document.getElementById('ctx-rotate-cw').addEventListener('click', () => {
+            if (selectedNode) { selectedNode.rotation(selectedNode.rotation() + 90); mainLayer.batchDraw(); }
+            hideContextMenu();
+        });
+        document.getElementById('ctx-rotate-ccw').addEventListener('click', () => {
+            if (selectedNode) { selectedNode.rotation(selectedNode.rotation() - 90); mainLayer.batchDraw(); }
+            hideContextMenu();
+        });
+        document.getElementById('ctx-bring-front').addEventListener('click', () => {
+            if (selectedNode) { selectedNode.moveToTop(); transformer.moveToTop(); mainLayer.batchDraw(); }
+            hideContextMenu();
+        });
+        document.getElementById('ctx-send-back').addEventListener('click', () => {
+            if (selectedNode) { selectedNode.moveToBottom(); mainLayer.batchDraw(); }
+            hideContextMenu();
+        });
+        document.getElementById('ctx-remove').addEventListener('click', () => {
+            if (selectedNode) removeNodeFromCanvas(selectedNode);
+            hideContextMenu();
+        });
+
+        function removeNodeFromCanvas(node) {
+            const type = node.getAttr('objectType');
+            const id = node.getAttr('objectId');
+            const key = `${type}_${id}`;
+            placedObjects.delete(key);
+            node.destroy();
+            transformer.nodes([]);
+            selectedNode = null;
+            mainLayer.batchDraw();
+            renderSidebarLists();
+            showToast('Đã xóa đối tượng khỏi Layout', 'info');
+        }
+
+        // ===== GET CURRENT LAYOUT OBJECTS =====
+        function getCurrentLayoutObjects() {
+            const objects = [];
+            
+            if (currentViewMode === 'location') {
+                // 1. Floor plan objects currently on stage
+                mainLayer.find('.layout-object').forEach(group => {
+                    const baseX = group.getAttr('baseX') !== undefined ? group.getAttr('baseX') : group.x();
+                    const baseY = group.getAttr('baseY') !== undefined ? group.getAttr('baseY') : group.y();
+                    const objType = group.getAttr('objectType');
+                    const entry = {
+                        object_type: objType,
+                        object_id: group.getAttr('objectId'),
+                        x: Math.round(baseX * 100) / 100,
+                        y: Math.round(baseY * 100) / 100,
+                        rotation: Math.round(group.rotation() * 100) / 100,
+                        width: 0,
+                        height: 0,
+                        parent_type: null,
+                        parent_id: null
+                    };
+                    if (objType === 'wall') {
+                        entry.width = Math.round((group.getAttr('wallWidth') || 0) * 100) / 100;
+                        entry.height = Math.round((group.getAttr('wallHeight') || 0) * 100) / 100;
+                    } else if (objType === 'asset') {
+                        entry.width = Math.round((group.getAttr('assetWidth') || 0) * 100) / 100;
+                        entry.height = Math.round((group.getAttr('assetHeight') || 0) * 100) / 100;
+                    }
+                    objects.push(entry);
+                });
+
+                // 2. Wall-mounted objects from wallAssetsMap
+                for (const [wallId, assets] of wallAssetsMap.entries()) {
+                    assets.forEach(asset => {
+                        objects.push({
+                            object_type: 'asset',
+                            object_id: asset.object_id,
+                            x: Math.round(asset.x * 100) / 100,
+                            y: Math.round(asset.y * 100) / 100,
+                            rotation: 0,
+                            width: asset.width || 0,
+                            height: asset.height || 0,
+                            parent_type: 'wall',
+                            parent_id: wallId
+                        });
+                    });
+                }
+            } else if (currentViewMode === 'wall') {
+                // 1. Update current active wall's assets in wallAssetsMap
+                const wallBgGroup = mainLayer.findOne('.wall-bg-group');
+                if (wallBgGroup) {
+                    const wallAssets = [];
+                    wallBgGroup.find('.layout-object').forEach(group => {
+                        if (group.getAttr('objectType') === 'asset') {
+                            wallAssets.push({
+                                object_type: 'asset',
+                                object_id: group.getAttr('objectId'),
+                                x: Math.round(group.x() * 100) / 100,
+                                y: Math.round(group.y() * 100) / 100,
+                                rotation: 0,
+                                width: Math.round((group.getAttr('assetWidth') || 0) * 100) / 100,
+                                height: Math.round((group.getAttr('assetHeight') || 0) * 100) / 100,
+                                parent_type: 'wall',
+                                parent_id: activeWallId
+                            });
+                        }
+                    });
+                    wallAssetsMap.set(activeWallId, wallAssets);
+                }
+
+                // 2. Gather from floorPlanObjects (which has floor items and other wall assets)
+                floorPlanObjects.forEach(obj => {
+                    if (obj.parent_type === 'wall' && parseInt(obj.parent_id, 10) === activeWallId) {
+                        // Skip the old version of the active wall's assets
+                        return;
+                    }
+                    objects.push(obj);
+                });
+
+                // 3. Add the updated assets of the active wall
+                if (wallAssetsMap.has(activeWallId)) {
+                    wallAssetsMap.get(activeWallId).forEach(asset => {
+                        objects.push({
+                            object_type: 'asset',
+                            object_id: asset.object_id,
+                            x: asset.x,
+                            y: asset.y,
+                            rotation: 0,
+                            parent_type: 'wall',
+                            parent_id: activeWallId
+                        });
+                    });
+                }
+            }
+            return objects;
+        }
+
+        // ===== SAVE LAYOUT =====
+        async function saveLayout() {
+            if (!currentLocationId) {
+                showToast('Chưa chọn Location', 'error');
+                return;
+            }
+            
+            const objects = getCurrentLayoutObjects();
+
+            showLoading();
+            try {
+                const resp = await fetch(`${API_BASE}/layout/save/`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': getCsrfToken(),
+                    },
+                    body: JSON.stringify({
+                        location_id: currentLocationId,
+                        objects: objects,
+                    }),
+                });
+                const result = await resp.json();
+                hideLoading();
+                if (resp.ok) {
+                    showToast(`Đã lưu thành công! (${objects.length} đối tượng)`, 'success');
+                } else {
+                    showToast(result.error || 'Lỗi khi lưu', 'error');
+                }
+            } catch (err) {
+                hideLoading();
+                showToast('Lỗi kết nối server', 'error');
+            }
+        }
+
+        // ===== SWITCH TO WALL VIEW =====
+        function switchToWallView(wallGroup) {
+            floorPlanObjects = getCurrentLayoutObjects();
+
+            activeWallId = parseInt(wallGroup.getAttr('objectId'), 10);
+            currentViewMode = 'wall';
+
+            // Show navigation group
+            navGroupEl.style.display = 'inline-flex';
+            navDividerEl.style.display = 'inline-flex';
+            breadcrumbEl.innerHTML = `Mặt bằng > 🧱 Bức tường W${activeWallId}`;
+
+            deselectAll();
+
+            // Clear main layer layout-objects
+            mainLayer.find('.layout-object').forEach(n => n.destroy());
+            transformer.nodes([]);
+
+            renderWallCanvas(wallGroup);
+        }
+
+        // ===== SWITCH TO LOCATION VIEW =====
+        function switchToLocationView() {
+            if (currentViewMode !== 'wall') return;
+
+            const wallBgGroup = mainLayer.findOne('.wall-bg-group');
+            if (wallBgGroup) {
+                const wallAssets = [];
+                wallBgGroup.find('.layout-object').forEach(group => {
+                    if (group.getAttr('objectType') === 'asset') {
+                        wallAssets.push({
+                            object_type: 'asset',
+                            object_id: group.getAttr('objectId'),
+                            x: Math.round(group.x() * 100) / 100,
+                            y: Math.round(group.y() * 100) / 100,
+                            rotation: 0,
+                            width: Math.round((group.getAttr('assetWidth') || 0) * 100) / 100,
+                            height: Math.round((group.getAttr('assetHeight') || 0) * 100) / 100,
+                            parent_type: 'wall',
+                            parent_id: activeWallId
+                        });
+                    }
+                });
+                wallAssetsMap.set(activeWallId, wallAssets);
+            }
+
+            const savedObjects = getCurrentLayoutObjects();
+
+            currentViewMode = 'location';
+            activeWallId = null;
+
+            // Hide navigation group
+            navGroupEl.style.display = 'none';
+            navDividerEl.style.display = 'none';
+
+            deselectAll();
+
+            redrawLayoutObjects(savedObjects);
+
+            setTimeout(fitToContent, 50);
+        }
+
+        // ===== RENDER WALL CANVAS =====
+        function renderWallCanvas(wallGroup) {
+            const isV = (wallGroup.getAttr('wallType') === 'v' || wallGroup.getAttr('wallHeight') > wallGroup.getAttr('wallWidth'));
+            const wallLength = isV ? (wallGroup.getAttr('wallHeight') || 160) : (wallGroup.getAttr('wallWidth') || 160);
+            const wallHeight = 240;
+
+            const wallBgGroup = new Konva.Group({
+                x: snapValue((stageWidth - wallLength) / 2),
+                y: snapValue((stageHeight - wallHeight) / 2),
+                name: 'wall-bg-group'
+            });
+
+            const wallBgRect = new Konva.Rect({
+                width: wallLength,
+                height: wallHeight,
+                fill: '#202435',
+                stroke: '#4b5563',
+                strokeWidth: 4,
+                cornerRadius: 4,
+                name: 'wall-bg-rect'
+            });
+
+            const hatchSpacing = 20;
+            const pg = new Konva.Group({
+                clipX: 0,
+                clipY: 0,
+                clipWidth: wallLength,
+                clipHeight: wallHeight,
+                listening: false
+            });
+            for (let xOffset = -wallHeight; xOffset < wallLength; xOffset += hatchSpacing) {
+                pg.add(new Konva.Line({
+                    points: [xOffset, wallHeight, xOffset + wallHeight, 0],
+                    stroke: 'rgba(255, 255, 255, 0.03)',
+                    strokeWidth: 2,
+                    listening: false
+                }));
+            }
+
+            const wallLabel = new Konva.Text({
+                text: `Mặt đứng bức tường W${activeWallId} (${wallLength}px x ${wallHeight}px)`,
+                x: 15,
+                y: 15,
+                fontSize: 12,
+                fontFamily: 'Inter, sans-serif',
+                fill: 'rgba(255, 255, 255, 0.25)',
+                fontStyle: 'bold'
+            });
+
+            wallBgGroup.add(wallBgRect, pg, wallLabel);
+            mainLayer.add(wallBgGroup);
+
+            // Add assets that are currently on this wall
+            if (wallAssetsMap.has(activeWallId)) {
+                wallAssetsMap.get(activeWallId).forEach(savedAsset => {
+                    const info = allAssets.find(a => a.id === savedAsset.object_id);
+                    if (info) {
+                        addAssetToWallCanvas(info, savedAsset.x, savedAsset.y, savedAsset.width, savedAsset.height);
+                    }
+                });
+            }
+
+            mainLayer.batchDraw();
+            renderSidebarLists();
+            drawGrid();
+
+            setTimeout(fitToContent, 50);
+        }
+
+        // ===== ADD ASSET TO WALL CANVAS =====
+        function addAssetToWallCanvas(assetInfo, x, y, customWidth, customHeight) {
+            const key = `asset_${assetInfo.id}`;
+            const width = customWidth || 110;
+            const height = customHeight || 70;
+            const status = assetInfo.status || 'active';
+            const color = ASSET_STATUS_COLORS[status] || '#e67e22';
+            const name = assetInfo.name || `Asset #${assetInfo.id}`;
+            const assetCode = assetInfo.asset_code || '';
+
+            const wallBgGroup = mainLayer.findOne('.wall-bg-group');
+            if (!wallBgGroup) return;
+
+            const wallBgRect = wallBgGroup.findOne('.wall-bg-rect');
+            const wallLength = wallBgRect.width();
+            const wallHeight = wallBgRect.height();
+
+            const group = new Konva.Group({
+                x: x,
+                y: y,
+                draggable: true,
+                name: 'layout-object',
+                dragBoundFunc: function(pos) {
+                    const transform = wallBgGroup.getAbsoluteTransform().copy().invert();
+                    const localPos = transform.point(pos);
+                    const w = group.getAttr('assetWidth') || width;
+                    const h = group.getAttr('assetHeight') || height;
+                    const clampedX = Math.max(0, Math.min(wallLength - w, localPos.x));
+                    const clampedY = Math.max(0, Math.min(wallHeight - h, localPos.y));
+                    return wallBgGroup.getAbsoluteTransform().point({ x: clampedX, y: clampedY });
+                }
+            });
+            group.setAttr('objectType', 'asset');
+            group.setAttr('objectId', assetInfo.id);
+            group.setAttr('baseX', x);
+            group.setAttr('baseY', y);
+            group.setAttr('assetWidth', width);
+            group.setAttr('assetHeight', height);
+
+            function buildAssetWallShapes(w, h) {
+                group.destroyChildren();
+                
+                const shadow = new Konva.Rect({
+                    width: w, height: h,
+                    fill: 'rgba(0,0,0,0.3)', cornerRadius: 4,
+                    x: 3, y: 3
+                });
+
+                const body = new Konva.Rect({
+                    width: w, height: h,
+                    fill: '#1e2230', stroke: color,
+                    strokeWidth: 2, cornerRadius: 4,
+                    name: 'asset-body'
+                });
+
+                const accent = new Konva.Rect({
+                    width: 6, height: Math.max(4, h - 12),
+                    fill: color, cornerRadius: 2,
+                    x: 6, y: 6
+                });
+
+                const nameText = new Konva.Text({
+                    text: name,
+                    x: 18,
+                    y: 10,
+                    width: w - 24,
+                    fontSize: 10,
+                    fontFamily: 'Inter, sans-serif',
+                    fontStyle: 'bold',
+                    fill: '#e4e7f1',
+                    ellipsis: true,
+                    wrap: 'none'
+                });
+
+                const codeText = new Konva.Text({
+                    text: assetCode,
+                    x: 18,
+                    y: 26,
+                    width: w - 24,
+                    fontSize: 8,
+                    fontFamily: 'Inter, sans-serif',
+                    fill: '#8b90a5',
+                    ellipsis: true,
+                    wrap: 'none'
+                });
+
+                const statusText = new Konva.Text({
+                    text: status.toUpperCase(),
+                    x: 18,
+                    y: 42,
+                    fontSize: 8,
+                    fontFamily: 'Inter, sans-serif',
+                    fontStyle: 'bold',
+                    fill: color
+                });
+
+                if (h < 35) {
+                    codeText.visible(false);
+                    statusText.visible(false);
+                } else if (h < 50) {
+                    statusText.visible(false);
+                }
+
+                group.add(shadow, body, accent, nameText, codeText, statusText);
+            }
+
+            buildAssetWallShapes(width, height);
+
+            group.on('transformend', () => {
+                const scaleX = group.scaleX();
+                const scaleY = group.scaleY();
+                
+                let newW = Math.max(40, Math.round(group.getAttr('assetWidth') * scaleX));
+                let newH = Math.max(20, Math.round(group.getAttr('assetHeight') * scaleY));
+                
+                if (snapToGrid) {
+                    newW = Math.round(newW / gridSize) * gridSize;
+                    newH = Math.round(newH / gridSize) * gridSize;
+                }
+                
+                newW = Math.max(40, Math.min(wallLength - group.x(), newW));
+                newH = Math.max(20, Math.min(wallHeight - group.y(), newH));
+                
+                group.scaleX(1);
+                group.scaleY(1);
+                group.setAttr('assetWidth', newW);
+                group.setAttr('assetHeight', newH);
+                group.setAttr('baseX', group.x());
+                group.setAttr('baseY', group.y());
+                buildAssetWallShapes(newW, newH);
+                mainLayer.batchDraw();
+            });
+
+            group.on('dragend', () => {
+                let localX = group.x();
+                let localY = group.y();
+                if (snapToGrid) {
+                    localX = Math.round(localX / gridSize) * gridSize;
+                    localY = Math.round(localY / gridSize) * gridSize;
+                }
+                const w = group.getAttr('assetWidth') || width;
+                const h = group.getAttr('assetHeight') || height;
+                localX = Math.max(0, Math.min(wallLength - w, localX));
+                localY = Math.max(0, Math.min(wallHeight - h, localY));
+                group.x(localX);
+                group.y(localY);
+                group.setAttr('baseX', localX);
+                group.setAttr('baseY', localY);
+                mainLayer.batchDraw();
+            });
+
+            group.on('click tap', (e) => { e.cancelBubble = true; selectNode(group); });
+
+            group.on('contextmenu', (e) => {
+                e.evt.preventDefault(); e.cancelBubble = true;
+                selectNode(group);
+                showContextMenu(e.evt.clientX, e.evt.clientY);
+            });
+
+            group.on('mouseenter', () => {
+                stageContainer.style.cursor = 'pointer';
+                const body = group.findOne('.asset-body');
+                if (body) {
+                    body.strokeWidth(3.5);
+                    body.shadowColor(color);
+                    body.shadowBlur(10);
+                    body.shadowOpacity(0.6);
+                }
+                mainLayer.batchDraw();
+            });
+
+            group.on('mouseleave', () => {
+                stageContainer.style.cursor = 'grab';
+                const body = group.findOne('.asset-body');
+                if (body) {
+                    body.strokeWidth(2);
+                    body.shadowBlur(0);
+                    body.shadowOpacity(0);
+                }
+                mainLayer.batchDraw();
+            });
+
+            group.on('dblclick dbltap', (e) => {
+                e.cancelBubble = true;
+                window.open(`/plugins/netbox-asset-management/assets/${assetInfo.id}/`, '_blank');
+            });
+
+            wallBgGroup.add(group);
+            placedObjects.set(key, group);
+            mainLayer.batchDraw();
+        }
+
+        // ===== DRAW WALL INDICATORS =====
+        function drawWallIndicators() {
+            mainLayer.find('.layout-object').forEach(group => {
+                if (group.getAttr('objectType') === 'wall') {
+                    const wallId = group.getAttr('objectId');
+                    
+                    const oldIndicators = group.findOne('.wall-indicators-group');
+                    if (oldIndicators) oldIndicators.destroy();
+
+                    if (wallAssetsMap.has(wallId) && wallAssetsMap.get(wallId).length > 0) {
+                        const assets = wallAssetsMap.get(wallId);
+                        const indicatorsGroup = new Konva.Group({
+                            name: 'wall-indicators-group',
+                            listening: false
+                        });
+
+                        const w = group.getAttr('wallWidth');
+                        const h = group.getAttr('wallHeight');
+                        const isV = (h > w);
+
+                        const step = (isV ? h : w) / (assets.length + 1);
+                        
+                        assets.forEach((a, idx) => {
+                            const offset = step * (idx + 1);
+                            const dot = new Konva.Circle({
+                                x: isV ? w / 2 : offset,
+                                y: isV ? offset : h / 2,
+                                radius: Math.min(w, h) / 3.5,
+                                fill: '#3498db',
+                                stroke: '#fff',
+                                strokeWidth: 0.5
+                            });
+                            indicatorsGroup.add(dot);
+                        });
+
+                        group.add(indicatorsGroup);
+                    }
+                }
+            });
+            mainLayer.batchDraw();
+        }
+
+        // ===== EVENT BINDINGS =====
+        saveBtn.addEventListener('click', saveLayout);
+        backBtn.addEventListener('click', switchToLocationView);
+
+        gridSizeSelect.addEventListener('change', () => {
+            gridSize = parseInt(gridSizeSelect.value, 10);
+            drawGrid();
+        });
+
+        snapBtn.addEventListener('click', () => {
+            snapToGrid = !snapToGrid;
+            snapBtn.classList.toggle('active', snapToGrid);
+            snapBtn.textContent = snapToGrid ? '⊞ Snap ON' : '⊞ Snap OFF';
+        });
+
+        // ===== INIT — Auto-load layout for current location =====
+        drawGrid();
+        loadLayout(LOCATION_ID);
+
+    })();
+</script>
+{% endblock %}

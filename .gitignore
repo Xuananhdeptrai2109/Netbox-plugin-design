@@ -1,0 +1,27 @@
+# Bỏ qua toàn bộ thư mục env chứa mật khẩu trong netbox
+netbox/env/
+
+# Bỏ qua file .env trong netbox
+netbox/.env
+netbox.env
+
+# Bỏ qua tất cả file .env ở bất kỳ thư mục nào
+.env
+*.env
+**/*.env
+*.env.*
+
+# Ngoại lệ: Không bỏ qua các file template ví dụ (.env.example)
+!*.env.example
+!*.example
+
+# Bỏ qua thư mục rác Python/IDE/Environment
+**/__pycache__/
+*.pyc
+.vscode/
+.idea/
+.venv/
+venv/
+*.log
+
+

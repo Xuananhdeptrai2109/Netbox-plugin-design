@@ -1,0 +1,131 @@
+{% load static %}
+<link rel="stylesheet" href="{% static 'upload.css' %}">
+{% comment %} <input type="file" name="files" multiple id="incident-upload-file-input"> {% endcomment %}
+<div class="custom-upload-box" id="custom-upload-box">
+  <span class="upload-icon">&#8682;</span>
+  <span>Drop files to attach, or <span class="upload-browse">browse.</span></span>
+  <input type="file" name="files" multiple id="incident-upload-file-input" style="display:none;">
+  <div id="selected-files-list" style="margin-top:12px;"></div>
+  <div id="incident-upload-list" class="attachment-list"></div>
+  <div id="incident-upload-result"></div>
+</div>
+<div>
+  <span id="validate-file"> </span>
+</div>
+<input type="hidden" id="incident-object-id" value="{{ object_id }}">
+<input type="hidden" id="incident-model-name" value="{{ model_name }}">
+<input type="hidden" id="incident-session-key" value="{{ session_key }}">
+<input type="hidden" id="uploaded-files-input" name="uploaded_files_json"/>
+<input type="hidden" id="all-files-input" name="all_files"/>
+<input type="hidden" id="has-file-changes-input" name="has_file_changes" value="true">
+<input type="hidden" id="validate-flag" value="{{ valid_flg }}">
+<input type="hidden" id="validate-requirement-flg" value="{{ valid_req_flg }}">
+<input type="hidden" id="list-type-file" value="{{ type_file }}">
+
+<script>
+  window.UPLOAD_FILE_URL = "{% url 'plugins:upload_file_plugin:upload_file' %}";
+  window.DELETE_FILE_URL = "{% url 'plugins:upload_file_plugin:delete_file' %}";
+  window.DELETE_FILE_TEMP_URL = "{% url 'plugins:upload_file_plugin:delete_temp_file' %}";
+  window.UPLOADED_FILES = [
+    {% for file in uploaded_files %}
+      {
+        id: {{ file.id }},
+        file_name: "{{ file.file_name|default:file.file.name }}",
+        size: {{ file.file.size }},
+        created_at: "{{ file.created_at|date:'d/m/Y H:i' }}",
+        file: "{{ file.file }}",
+        isFromDB: true
+      },
+    {% endfor %}
+  ];
+</script>
+<script src="{% static 'upload_file.js' %}"></script>
+<script src="{% static 'custom_common.js' %}"></script>
+{{ form.data.uploaded_files_json|json_script:"uploaded-files-data" }}
+<script>
+  document.addEventListener("DOMContentLoaded", function () {
+    const raw = document.getElementById("uploaded-files-data").textContent;
+    const uploadedFilesData = JSON.parse(raw);         // First parse: string → JSON string
+    const filesArray = JSON.parse(uploadedFilesData);
+    console.error(typeof filesArray)
+    console.error(filesArray)
+    const list = document.getElementById('incident-upload-list');
+    if (filesArray && filesArray.length > 0) {
+      filesArray.forEach(f => {
+        if (!checkValidation(f)) {
+          return {success: false, error: "File is not validate"}
+        }
+        uploadedFilesList.push({file_name: f.file_name, path: f.path, size: f.size});
+      });
+
+      updateUploadedFilesInput();
+      filesArray.forEach((f, index) => {
+        console.error("innnerHTML: " + f)
+        list.innerHTML += `
+        <div class="attachment-item">
+          <span class="icon">📄</span>
+          <div class="filename">
+            <a href="${getAbsoluteFileUrl(f.path)}" target="_blank" class="download-link">${f.file_name}</a>
+          </div>
+          <div class="filesize">${(f.size / 1024).toFixed(1)} KB</div>
+          <div class="created">Vừa upload</div>
+           <button type="button" class="delete-btn" data-uploaded-index="${uploadedFilesList.length - 1 + index}" title="Xóa">🗑</button>
+        </div>
+      `;
+      })
+      list.querySelectorAll('.delete-btn').forEach(btn => {
+        btn.onclick = function () {
+          const fileId = this.getAttribute('data-id');
+          const tempIndex = this.getAttribute('data-temp-index');
+          const uploadedIndex = this.getAttribute('data-uploaded-index');
+
+          if (tempIndex !== null) {
+            // Xóa file tạm khỏi biến tempFiles
+
+            tempFiles.splice(parseInt(tempIndex), 1);
+            renderFileList();
+          } else if (uploadedIndex !== null) {
+            // Xóa file vừa upload (chưa lưu DB)
+            const idx = parseInt(uploadedIndex);
+            if (idx >= 0 && idx < uploadedFilesList.length) {
+              // Lưu thông tin file đã xóa vào deletedFilesList
+              deletedFilesList.push(uploadedFilesList[idx]);
+              // Xóa khỏi mảng uploadedFilesList
+              uploadedFilesList.splice(idx, 1);
+              updateUploadedFilesInput();
+            }
+            // Xóa khỏi giao diện
+            btn.closest('.attachment-item').remove();
+            updateAllFilesInput();
+            document.activeElement.blur();
+          } else {
+            // Xóa file từ DB (chỉ xóa vật lý trên giao diện, không gọi API)
+
+            // Lưu thông tin file đã xóa vào deletedFilesList
+            if (window.UPLOADED_FILES) {
+              const idx = window.UPLOADED_FILES.findIndex(f => f.id == fileId);
+              if (idx !== -1) {
+                deletedFilesList.push(window.UPLOADED_FILES[idx]);
+                window.UPLOADED_FILES.splice(idx, 1);
+              }
+            }
+            // Xóa khỏi giao diện
+            btn.closest('.attachment-item').remove();
+            updateAllFilesInput();
+            document.activeElement.blur(); // Bỏ focus khỏi input sau khi xóa
+          }
+        }
+      });
+    }
+  })
+</script>
+
+
+
+
+
+
+
+
+
+

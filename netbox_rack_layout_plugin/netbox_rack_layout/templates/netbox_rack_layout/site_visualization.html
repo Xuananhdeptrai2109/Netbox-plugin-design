@@ -1,0 +1,2513 @@
+{% extends 'generic/object.html' %}
+{% load static %}
+
+{% block title %}Site Visualization - {{ object }}{% endblock %}
+
+{% block content %}
+<script src="https://unpkg.com/konva@9/konva.min.js"></script>
+<style>
+    /* ===== ROOT VARIABLES ===== */
+    :root {
+        --sv-bg: #0f1117;
+        --sv-surface: #1a1d27;
+        --sv-surface-2: #252836;
+        --sv-border: #2e3245;
+        --sv-text: #e4e7f1;
+        --sv-text-muted: #8b90a5;
+        --sv-accent: #6c63ff;
+        --sv-accent-hover: #7f78ff;
+        --sv-success: #2ecc71;
+        --sv-warning: #f1c40f;
+        --sv-danger: #e74c3c;
+        --sv-info: #3498db;
+        --sv-sidebar-w: 320px;
+        --sv-toolbar-h: 52px;
+        --sv-radius: 10px;
+        --sv-glass: rgba(26, 29, 39, 0.85);
+    }
+
+    /* ===== LAYOUT WRAPPER ===== */
+    .sv-wrapper {
+        display: flex;
+        height: calc(100vh - 220px);
+        min-height: 600px;
+        overflow: hidden;
+        background: var(--sv-bg);
+        color: var(--sv-text);
+        font-family: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
+        border-radius: var(--sv-radius);
+        border: 1px solid var(--sv-border);
+    }
+
+    /* ===== SIDEBAR ===== */
+    .sv-sidebar {
+        width: var(--sv-sidebar-w);
+        min-width: var(--sv-sidebar-w);
+        background: var(--sv-glass);
+        backdrop-filter: blur(20px);
+        -webkit-backdrop-filter: blur(20px);
+        border-right: 1px solid var(--sv-border);
+        display: flex;
+        flex-direction: column;
+        z-index: 10;
+        overflow: hidden;
+        transition: width 0.2s cubic-bezier(0.4, 0, 0.2, 1), min-width 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    .sv-sidebar-header {
+        padding: 16px;
+        border-bottom: 1px solid var(--sv-border);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+    }
+
+    .sv-sidebar-title-group {
+        min-width: 0;
+    }
+
+    .sv-sidebar-header h5 {
+        margin: 0;
+        font-size: 14px;
+        font-weight: 700;
+        color: var(--sv-accent);
+        text-transform: uppercase;
+        letter-spacing: 1.5px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .sv-sidebar-header .sv-site-name {
+        font-size: 12px;
+        color: var(--sv-text-muted);
+        margin-top: 4px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    #sv-sidebar-toggle {
+        background: rgba(255, 255, 255, 0.03);
+        border: 1px solid var(--sv-border);
+        color: var(--sv-text-muted);
+        cursor: pointer;
+        font-size: 10px;
+        padding: 6px 8px;
+        border-radius: 6px;
+        transition: all 0.15s ease;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+    }
+
+    #sv-sidebar-toggle:hover {
+        background: rgba(108, 99, 255, 0.15);
+        color: var(--sv-text);
+        border-color: var(--sv-accent);
+    }
+
+    /* Collapsed Sidebar State */
+    .sv-sidebar.collapsed {
+        width: 72px !important;
+        min-width: 72px !important;
+    }
+
+    .sv-sidebar.collapsed .sv-sidebar-header {
+        padding: 16px 8px;
+        justify-content: center;
+    }
+
+    .sv-sidebar.collapsed .sv-sidebar-title-group {
+        display: none !important;
+    }
+
+    .sv-sidebar.collapsed .sv-search-box {
+        display: none !important;
+    }
+
+    .sv-sidebar.collapsed .sv-section-label {
+        display: none !important;
+    }
+
+    .sv-sidebar.collapsed .sv-location-card {
+        justify-content: center;
+        padding: 8px;
+        margin: 8px auto;
+        width: 48px;
+        height: 48px;
+    }
+
+    .sv-sidebar.collapsed .sv-location-info {
+        display: none !important;
+    }
+
+    .sv-sidebar.collapsed .sv-location-badge {
+        display: none !important;
+    }
+
+    /* Search */
+    .sv-search-box {
+        padding: 12px 16px 8px;
+    }
+
+    .sv-search-input {
+        width: 100%;
+        padding: 9px 12px 9px 36px;
+        border: 1px solid var(--sv-border);
+        border-radius: 8px;
+        background: var(--sv-surface-2);
+        color: var(--sv-text);
+        font-size: 13px;
+        outline: none;
+        transition: border-color .2s;
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='%238b90a5' viewBox='0 0 16 16'%3E%3Cpath d='M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85zm-5.44.906a5.5 5.5 0 1 1 0-11 5.5 5.5 0 0 1 0 11z'/%3E%3C/svg%3E");
+        background-repeat: no-repeat;
+        background-position: 10px center;
+    }
+
+    .sv-search-input:focus {
+        border-color: var(--sv-accent);
+    }
+
+    /* Location list */
+    .sv-locations-scroll {
+        flex: 1;
+        overflow-y: auto;
+        padding: 0 12px 12px;
+    }
+
+    .sv-locations-scroll::-webkit-scrollbar {
+        width: 5px;
+    }
+
+    .sv-locations-scroll::-webkit-scrollbar-track {
+        background: transparent;
+    }
+
+    .sv-locations-scroll::-webkit-scrollbar-thumb {
+        background: var(--sv-border);
+        border-radius: 4px;
+    }
+
+    .sv-section-label {
+        font-size: 11px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 1.2px;
+        color: var(--sv-text-muted);
+        padding: 14px 4px 6px;
+        position: sticky;
+        top: 0;
+        background: var(--sv-glass);
+        backdrop-filter: blur(20px);
+        z-index: 2;
+    }
+
+    .sv-location-card {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 10px 12px;
+        margin: 3px 0;
+        border-radius: 8px;
+        background: var(--sv-surface-2);
+        border: 1px solid transparent;
+        cursor: grab;
+        transition: all .2s ease;
+        user-select: none;
+    }
+
+    .sv-location-card:hover {
+        border-color: var(--sv-accent);
+        background: rgba(108, 99, 255, .08);
+        transform: translateX(3px);
+    }
+
+    .sv-location-card:active {
+        cursor: grabbing;
+    }
+
+    .sv-location-card.placed {
+        opacity: .45;
+        pointer-events: none;
+    }
+
+    .sv-location-icon {
+        width: 36px;
+        height: 36px;
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 18px;
+        flex-shrink: 0;
+        background: transparent;
+        color: #fff;
+    }
+
+    .sv-location-info {
+        flex: 1;
+        min-width: 0;
+    }
+
+    .sv-location-name {
+        font-size: 13px;
+        font-weight: 600;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        color: var(--sv-text);
+    }
+
+    .sv-location-meta {
+        font-size: 11px;
+        color: var(--sv-text-muted);
+        margin-top: 2px;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+
+    .sv-location-badge {
+        padding: 2px 6px;
+        border-radius: 6px;
+        font-size: 9px;
+        font-weight: 700;
+        color: #fff;
+    }
+
+    .sv-location-badge.has-layout {
+        background: var(--sv-success);
+    }
+
+    .sv-location-badge.no-layout {
+        background: var(--sv-text-muted);
+    }
+
+    /* ===== MAIN AREA ===== */
+    .sv-main {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        position: relative;
+    }
+
+    /* Toolbar */
+    .sv-toolbar {
+        height: var(--sv-toolbar-h);
+        background: var(--sv-glass);
+        backdrop-filter: blur(20px);
+        border-bottom: 1px solid var(--sv-border);
+        display: flex;
+        align-items: center;
+        padding: 0 16px;
+        gap: 12px;
+        z-index: 10;
+    }
+
+    .sv-toolbar-group {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+
+    .sv-toolbar-divider {
+        width: 1px;
+        height: 28px;
+        background: var(--sv-border);
+        margin: 0 6px;
+    }
+
+    .sv-btn {
+        padding: 7px 14px;
+        border: 1px solid var(--sv-border);
+        border-radius: 7px;
+        background: var(--sv-surface-2);
+        color: var(--sv-text);
+        font-size: 12px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all .15s;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        white-space: nowrap;
+    }
+
+    .sv-btn:hover {
+        background: var(--sv-accent);
+        border-color: var(--sv-accent);
+        color: #fff;
+    }
+
+    .sv-btn.active {
+        background: var(--sv-accent);
+        border-color: var(--sv-accent);
+        color: #fff;
+    }
+
+    .sv-btn-save {
+        background: linear-gradient(135deg, var(--sv-accent) 0%, #4834d4 100%);
+        border-color: var(--sv-accent);
+        color: #fff;
+    }
+
+    .sv-btn-save:hover {
+        box-shadow: 0 4px 18px rgba(108, 99, 255, .4);
+        transform: translateY(-1px);
+    }
+
+    .sv-zoom-display {
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--sv-text-muted);
+        min-width: 48px;
+        text-align: center;
+    }
+
+    /* Grid selector */
+    .sv-grid-select {
+        padding: 6px 8px;
+        border: 1px solid var(--sv-border);
+        border-radius: 7px;
+        background: var(--sv-surface-2);
+        color: var(--sv-text);
+        font-size: 12px;
+        outline: none;
+        cursor: pointer;
+    }
+
+    .sv-toolbar-right {
+        margin-left: auto;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .sv-coords {
+        font-size: 11px;
+        color: var(--sv-text-muted);
+        font-family: 'Consolas', 'Fira Code', monospace;
+        padding: 5px 10px;
+        background: var(--sv-surface-2);
+        border-radius: 6px;
+        min-width: 140px;
+        text-align: center;
+    }
+
+    /* ===== CANVAS CONTAINER ===== */
+    .sv-canvas-container {
+        flex: 1;
+        position: relative;
+        overflow: hidden;
+        background: #0a0c12;
+    }
+
+    /* ===== EMPTY STATE ===== */
+    .sv-empty-state {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        text-align: center;
+        color: var(--sv-text-muted);
+        z-index: 5;
+        pointer-events: none;
+    }
+
+    .sv-empty-state .icon {
+        font-size: 56px;
+        margin-bottom: 16px;
+        opacity: .3;
+    }
+
+    .sv-empty-state p {
+        font-size: 14px;
+        margin: 4px 0;
+    }
+
+    .sv-empty-state p.hint {
+        font-size: 12px;
+        opacity: 0.6;
+        margin-top: 8px;
+    }
+
+    /* ===== LOADING ===== */
+    .sv-loading-overlay {
+        position: absolute;
+        inset: 0;
+        background: rgba(15, 17, 23, .8);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 100;
+    }
+
+    .sv-spinner {
+        width: 40px;
+        height: 40px;
+        border: 3px solid var(--sv-border);
+        border-top-color: var(--sv-accent);
+        border-radius: 50%;
+        animation: sv-spin .7s linear infinite;
+    }
+
+    @keyframes sv-spin {
+        to {
+            transform: rotate(360deg);
+        }
+    }
+
+    /* ===== CONTEXT MENU ===== */
+    .sv-context-menu {
+        position: fixed;
+        background: var(--sv-surface);
+        border: 1px solid var(--sv-border);
+        border-radius: 10px;
+        padding: 6px 0;
+        min-width: 180px;
+        z-index: 9999;
+        box-shadow: 0 12px 40px rgba(0, 0, 0, .4);
+        display: none;
+    }
+
+    .sv-context-menu.show {
+        display: block;
+    }
+
+    .sv-context-item {
+        padding: 9px 16px;
+        font-size: 13px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        transition: background .1s;
+    }
+
+    .sv-context-item:hover {
+        background: rgba(108, 99, 255, .12);
+    }
+
+    .sv-context-item.danger {
+        color: var(--sv-danger);
+    }
+
+    .sv-context-divider {
+        height: 1px;
+        background: var(--sv-border);
+        margin: 4px 0;
+    }
+
+    /* ===== TOAST ===== */
+    .sv-toast {
+        position: fixed;
+        bottom: 24px;
+        right: 24px;
+        padding: 14px 22px;
+        border-radius: 10px;
+        font-size: 13px;
+        font-weight: 600;
+        color: #fff;
+        z-index: 9999;
+        opacity: 0;
+        transform: translateY(20px);
+        transition: all .3s ease;
+        pointer-events: none;
+        box-shadow: 0 8px 30px rgba(0, 0, 0, .3);
+    }
+
+    .sv-toast.show {
+        opacity: 1;
+        transform: translateY(0);
+    }
+
+    .sv-toast.success {
+        background: linear-gradient(135deg, #2ecc71, #27ae60);
+    }
+
+    .sv-toast.error {
+        background: linear-gradient(135deg, #e74c3c, #c0392b);
+    }
+
+    .sv-toast.info {
+        background: linear-gradient(135deg, #3498db, #2980b9);
+    }
+
+    /* ===== CANVAS TOOLTIP ===== */
+    .sv-canvas-tooltip {
+        position: absolute;
+        background: rgba(20, 22, 30, 0.95);
+        backdrop-filter: blur(8px);
+        -webkit-backdrop-filter: blur(8px);
+        border: 1px solid var(--sv-border);
+        border-radius: 8px;
+        padding: 10px 14px;
+        color: var(--sv-text);
+        font-family: 'Inter', sans-serif;
+        font-size: 11px;
+        pointer-events: none;
+        z-index: 1000;
+        opacity: 0;
+        transform: translateY(6px) scale(0.98);
+        transition: opacity 0.15s ease, transform 0.15s ease;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
+        min-width: 180px;
+    }
+
+    .sv-canvas-tooltip.show {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+
+    .sv-tooltip-title {
+        font-weight: 700;
+        font-size: 12px;
+        margin-bottom: 6px;
+        border-bottom: 1px solid var(--sv-border);
+        padding-bottom: 4px;
+        color: #fff;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+
+    .sv-tooltip-row {
+        display: flex;
+        justify-content: space-between;
+        margin: 3px 0;
+        gap: 12px;
+    }
+
+    .sv-tooltip-label {
+        color: var(--sv-text-muted);
+    }
+
+    .sv-tooltip-val {
+        font-weight: 600;
+        text-align: right;
+    }
+
+    .sv-tooltip-badge {
+        padding: 1px 5px;
+        border-radius: 4px;
+        font-size: 9px;
+        text-transform: uppercase;
+        font-weight: bold;
+        color: #fff;
+    }
+</style>
+
+<div class="sv-wrapper" id="sv-wrapper">
+    <!-- SIDEBAR -->
+    <div class="sv-sidebar">
+        <div class="sv-sidebar-header">
+            <div class="sv-sidebar-title-group">
+                <h5 class="sv-sidebar-title">🏢 Site Visualization</h5>
+                <div class="sv-site-name">{{ object.name }}</div>
+            </div>
+            <button id="sv-sidebar-toggle" title="Thu nhỏ sidebar">◀</button>
+        </div>
+        <div class="sv-search-box">
+            <input type="text" class="sv-search-input" id="sv-search" placeholder="Tìm kiếm Location...">
+        </div>
+
+        <div class="sv-locations-scroll" id="sv-locations-scroll">
+            <div class="sv-section-label">Locations (Phòng / Khu vực)</div>
+            <div id="sv-location-list"></div>
+            <div class="sv-section-label">Items (Đồ)</div>
+            <div id="sv-item-list"></div>
+        </div>
+    </div>
+
+    <!-- MAIN AREA -->
+    <div class="sv-main">
+        <!-- TOOLBAR -->
+        <div class="sv-toolbar">
+            <div class="sv-toolbar-group">
+                <button class="sv-btn sv-btn-save" id="sv-save-btn" title="Lưu Layout (Ctrl+S)">
+                    💾 Save Floor Plan
+                </button>
+            </div>
+            <div class="sv-toolbar-divider"></div>
+            <div class="sv-toolbar-group">
+                <button class="sv-btn" id="sv-zoom-in" title="Phóng to">🔍+</button>
+                <span class="sv-zoom-display" id="sv-zoom-display">100%</span>
+                <button class="sv-btn" id="sv-zoom-out" title="Thu nhỏ">🔍−</button>
+                <button class="sv-btn" id="sv-zoom-reset" title="Khôi phục sơ đồ đã lưu gần nhất">⟲</button>
+                <button class="sv-btn" id="sv-fit-btn" title="Fit to Screen">⊡ Fit</button>
+            </div>
+            <div class="sv-toolbar-divider"></div>
+            <div class="sv-toolbar-group">
+                <label style="font-size:12px;color:var(--sv-text-muted);white-space:nowrap;">Lưới:</label>
+                <select class="sv-grid-select" id="sv-grid-size">
+                    <option value="10">10 px</option>
+                    <option value="20" selected>20 px</option>
+                    <option value="50">50 px</option>
+                </select>
+                <button class="sv-btn active" id="sv-snap-btn" title="Snap to Grid">⊞ Snap</button>
+            </div>
+            <div class="sv-toolbar-right">
+                <span class="sv-coords" id="sv-coords">X: 0 &nbsp; Y: 0</span>
+            </div>
+        </div>
+
+        <!-- CANVAS -->
+        <div class="sv-canvas-container" id="sv-canvas-container">
+            <div id="sv-stage-container"></div>
+            <div class="sv-canvas-tooltip" id="sv-canvas-tooltip"></div>
+            <div class="sv-empty-state" id="sv-empty-state">
+                <div class="icon">🏗️</div>
+                <p><strong>Bản đồ mặt bằng trống</strong></p>
+                <p>Kéo thả Location hoặc Tường từ sidebar để thiết kế sơ đồ mặt bằng</p>
+                <p class="hint">Nhấp đúp vào Location trên canvas để đi sâu vào bên trong phòng</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- CONTEXT MENU -->
+<div class="sv-context-menu" id="sv-context-menu">
+    <div class="sv-context-item" id="ctx-rotate-cw">↻ Xoay 180° cửa (Trong ↔ Ngoài)</div>
+    <div class="sv-context-item" id="ctx-rotate-ccw">⇄ Lật cánh cửa (Trái ↔ Phải)</div>
+    <div class="sv-context-divider"></div>
+    <div class="sv-context-item" id="ctx-bring-front">⬆ Đưa lên trên cùng</div>
+    <div class="sv-context-item" id="ctx-send-back">⬇ Đưa xuống dưới cùng</div>
+    <div class="sv-context-divider"></div>
+    <div class="sv-context-item" id="ctx-edit-layout" style="font-weight: bold;">↗ Mở sơ đồ phòng tủ Rack</div>
+    <div class="sv-context-divider"></div>
+    <div class="sv-context-item danger" id="ctx-remove">🗑 Xóa khỏi mặt bằng</div>
+</div>
+
+<!-- TOAST -->
+<div class="sv-toast" id="sv-toast"></div>
+
+<!-- LOADING OVERLAY -->
+<div class="sv-loading-overlay" id="sv-loading" style="display:none;">
+    <div class="sv-spinner"></div>
+</div>
+
+<script>
+    (function () {
+        'use strict';
+
+        // ===== CONFIGURATION =====
+        const SITE_ID = {{ object.pk }};
+    const API_BASE = '/api/plugins/rack-layout';
+    let gridSize = 20;
+    let snapToGrid = true;
+    let allLocations = [];
+    let placedObjects = new Map();
+    let wallCounter = 0;
+
+    // ===== DOM REFS =====
+    const searchInput = document.getElementById('sv-search');
+    const locationListEl = document.getElementById('sv-location-list');
+    const itemListEl = document.getElementById('sv-item-list');
+    const saveBtn = document.getElementById('sv-save-btn');
+    const zoomInBtn = document.getElementById('sv-zoom-in');
+    const zoomOutBtn = document.getElementById('sv-zoom-out');
+    const zoomResetBtn = document.getElementById('sv-zoom-reset');
+    const fitBtn = document.getElementById('sv-fit-btn');
+    const zoomDisplay = document.getElementById('sv-zoom-display');
+    const gridSizeSelect = document.getElementById('sv-grid-size');
+    const snapBtn = document.getElementById('sv-snap-btn');
+    const coordsDisplay = document.getElementById('sv-coords');
+    const emptyState = document.getElementById('sv-empty-state');
+    const loadingOverlay = document.getElementById('sv-loading');
+    const contextMenu = document.getElementById('sv-context-menu');
+    const toastEl = document.getElementById('sv-toast');
+    const tooltipEl = document.getElementById('sv-canvas-tooltip');
+
+    // ===== KONVA STAGE =====
+    const stageContainer = document.getElementById('sv-stage-container');
+    const canvasContainer = document.getElementById('sv-canvas-container');
+    let stageWidth = canvasContainer.clientWidth;
+    let stageHeight = canvasContainer.clientHeight;
+
+    const stage = new Konva.Stage({
+        container: 'sv-stage-container',
+        width: stageWidth,
+        height: stageHeight,
+        draggable: true,
+        dragBoundFunc: function (pos) {
+            return {
+                x: Math.min(0, pos.x),
+                y: Math.min(0, pos.y),
+            };
+        }
+    });
+
+    const gridLayer = new Konva.Layer({ listening: false });
+    const mainLayer = new Konva.Layer();
+    const axisLayer = new Konva.Layer({ listening: false });
+    stage.add(gridLayer);
+    stage.add(mainLayer);
+    stage.add(axisLayer);
+
+    // Transformer for rotation & resizing
+    const transformer = new Konva.Transformer({
+        rotateEnabled: true,
+        resizeEnabled: true,
+        rotationSnaps: [0, 45, 90, 135, 180, 225, 270, 315],
+        borderStroke: '#6c63ff',
+        borderStrokeWidth: 2,
+        anchorStroke: '#6c63ff',
+        anchorFill: '#fff',
+        anchorSize: 8,
+        keepRatio: false,
+        boundBoxFunc: (oldBox, newBox) => {
+            if (newBox.width < 120 || newBox.height < 100) {
+                return oldBox;
+            }
+            return newBox;
+        },
+    });
+    mainLayer.add(transformer);
+
+    let selectedNode = null;
+
+    // ===== HELPERS =====
+    function showToast(msg, type = 'info') {
+        toastEl.textContent = msg;
+        toastEl.className = 'sv-toast ' + type;
+        toastEl.classList.add('show');
+        clearTimeout(toastEl._timeout);
+        toastEl._timeout = setTimeout(() => toastEl.classList.remove('show'), 3000);
+    }
+
+    function showLoading() { loadingOverlay.style.display = 'flex'; }
+    function hideLoading() { loadingOverlay.style.display = 'none'; }
+
+    function getCsrfToken() {
+        const cookie = document.cookie.split(';').find(c => c.trim().startsWith('csrftoken='));
+        return cookie ? cookie.split('=')[1] : '';
+    }
+
+    function snapValue(val) {
+        return snapToGrid ? Math.round(val / gridSize) * gridSize : val;
+    }
+
+    function getRackColorByUtilization(freePercentage) {
+        if (freePercentage >= 70) return '#2ecc71';
+        if (freePercentage >= 40) return '#3498db';
+        if (freePercentage >= 10) return '#f39c12';
+        return '#e74c3c';
+    }
+
+    // ===== SITE OUTER BOUNDARY =====
+    function updateSiteOuterBoundary() {
+        let boundaryGroup = mainLayer.findOne('.site-outer-boundary-group');
+
+        const objects = mainLayer.find('.layout-object').filter(g => g.getAttr('parentType') !== 'door');
+        if (objects.length === 0) {
+            if (boundaryGroup) {
+                boundaryGroup.destroy();
+                mainLayer.batchDraw();
+            }
+            return;
+        }
+
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        objects.forEach(group => {
+            const rect = group.getClientRect({ relativeTo: mainLayer });
+            minX = Math.min(minX, rect.x);
+            minY = Math.min(minY, rect.y);
+            maxX = Math.max(maxX, rect.x + rect.width);
+            maxY = Math.max(maxY, rect.y + rect.height);
+        });
+
+        const padding = 20;
+        const boundaryX = minX - padding;
+        const boundaryY = minY - padding;
+        const boundaryW = (maxX - minX) + padding * 2;
+        const boundaryH = (maxY - minY) + padding * 2;
+
+        if (!boundaryGroup) {
+            boundaryGroup = new Konva.Group({
+                name: 'site-outer-boundary-group',
+                listening: false
+            });
+            mainLayer.add(boundaryGroup);
+        }
+        boundaryGroup.destroyChildren();
+
+        // Thick building perimeter wall
+        const outerWall = new Konva.Rect({
+            x: boundaryX,
+            y: boundaryY,
+            width: boundaryW,
+            height: boundaryH,
+            stroke: '#4c566a',
+            strokeWidth: 8,
+            cornerRadius: 0
+        });
+
+        // Inner boundary alignment line
+        const innerWall = new Konva.Rect({
+            x: boundaryX + 5,
+            y: boundaryY + 5,
+            width: boundaryW - 10,
+            height: boundaryH - 10,
+            stroke: 'rgba(255, 255, 255, 0.05)',
+            strokeWidth: 1.5,
+            cornerRadius: 0
+        });
+
+        // Building Label
+        const labelText = new Konva.Text({
+            text: `FACILITY SHELL - {{ object.name|escapejs }}`,
+            x: boundaryX + 24,
+            y: boundaryY + 20,
+            fontSize: 9,
+            fontFamily: 'Inter, sans-serif',
+            fontStyle: 'bold',
+            fill: '#8b90a5',
+            opacity: 0.6,
+            letterSpacing: 2
+        });
+
+        boundaryGroup.add(outerWall, innerWall, labelText);
+
+        // Project all placed Door items to snap to the new boundary coordinates
+        const doorObjects = mainLayer.find('.layout-object').filter(g => g.getAttr('parentType') === 'door');
+        doorObjects.forEach(doorGroup => {
+            const worldX = doorGroup.x();
+            const worldY = doorGroup.y();
+            const dw = doorGroup.width();
+            const dh = doorGroup.height();
+            const rot = doorGroup.rotation();
+            const rad = rot * Math.PI / 180;
+
+            // 1. Calculate current world coordinates of midpoint I
+            const cx = worldX + (dw/2) * Math.cos(rad) - dh * Math.sin(rad);
+            const cy = worldY + (dw/2) * Math.sin(rad) + dh * Math.cos(rad);
+
+            // 2. Find closest wall to midpoint I
+            const x1 = boundaryX;
+            const x2 = boundaryX + boundaryW;
+            const y1 = boundaryY;
+            const y2 = boundaryY + boundaryH;
+
+            const clampedX = Math.max(x1, Math.min(x2, cx));
+            const clampedY = Math.max(y1, Math.min(y2, cy));
+
+            const dist = (ax, ay, bx, by) => Math.sqrt((ax - bx) ** 2 + (ay - by) ** 2);
+
+            const d_top = dist(cx, cy, clampedX, y1);
+            const d_bottom = dist(cx, cy, clampedX, y2);
+            const d_left = dist(cx, cy, x1, clampedY);
+            const d_right = dist(cx, cy, x2, clampedY);
+
+            const minDist = Math.min(d_top, d_bottom, d_left, d_right);
+
+            let snappedCx = cx;
+            let snappedCy = cy;
+            let newRot = rot;
+
+            if (minDist === d_top) {
+                snappedCx = clampedX;
+                snappedCy = y1;
+            } else if (minDist === d_bottom) {
+                snappedCx = clampedX;
+                snappedCy = y2;
+            } else if (minDist === d_left) {
+                snappedCx = x1;
+                snappedCy = clampedY;
+            } else if (minDist === d_right) {
+                snappedCx = x2;
+                snappedCy = clampedY;
+            }
+
+            // 3. Compute group coordinates from snapped I position
+            const rad_new = newRot * Math.PI / 180;
+            const gx_new = snappedCx - (dw/2) * Math.cos(rad_new) + dh * Math.sin(rad_new);
+            const gy_new = snappedCy - (dw/2) * Math.sin(rad_new) - dh * Math.cos(rad_new);
+
+            doorGroup.position({ x: gx_new, y: gy_new });
+            doorGroup.rotation(newRot);
+        });
+
+        boundaryGroup.moveToBottom();
+        mainLayer.batchDraw();
+    }
+
+    // ===== GRID DRAWING =====
+    function drawGrid() {
+        gridLayer.destroyChildren();
+        axisLayer.destroyChildren();
+
+        const scale = stage.scaleX();
+        const stagePos = stage.position();
+
+        const viewLeft = -stagePos.x / scale;
+        const viewTop = -stagePos.y / scale;
+        const viewRight = viewLeft + stageWidth / scale;
+        const viewBottom = viewTop + stageHeight / scale;
+
+        let step = gridSize;
+        while (step * scale < 12) step *= 5;
+
+        const startX = Math.floor(viewLeft / step) * step;
+        const endX = Math.ceil(viewRight / step) * step;
+        const startY = Math.floor(viewTop / step) * step;
+        const endY = Math.ceil(viewBottom / step) * step;
+
+        const lines = [];
+        const gridStartX = Math.max(0, startX);
+        for (let x = gridStartX; x <= endX; x += step) {
+            lines.push(new Konva.Line({
+                points: [x, Math.max(0, viewTop), x, viewBottom + 100],
+                stroke: x === 0 ? 'rgba(108,99,255,0.3)' : 'rgba(255,255,255,0.04)',
+                strokeWidth: x === 0 ? 1.5 / scale : 0.5 / scale,
+            }));
+        }
+        const gridStartY = Math.max(0, startY);
+        for (let y = gridStartY; y <= endY; y += step) {
+            lines.push(new Konva.Line({
+                points: [Math.max(0, viewLeft), y, viewRight + 100, y],
+                stroke: y === 0 ? 'rgba(108,99,255,0.3)' : 'rgba(255,255,255,0.04)',
+                strokeWidth: y === 0 ? 1.5 / scale : 0.5 / scale,
+            }));
+        }
+        lines.forEach(l => gridLayer.add(l));
+
+        const fontSize = 10 / scale;
+        for (let x = gridStartX; x <= endX; x += step * 2) {
+            if (x <= 0) continue;
+            axisLayer.add(new Konva.Text({
+                x: x, y: 4 / scale, text: String(Math.round(x)),
+                fontSize: fontSize, fill: 'rgba(139,144,165,0.5)',
+            }));
+        }
+        for (let y = gridStartY; y <= endY; y += step * 2) {
+            if (y <= 0) continue;
+            axisLayer.add(new Konva.Text({
+                x: 4 / scale, y: y, text: String(Math.round(y)),
+                fontSize: fontSize, fill: 'rgba(139,144,165,0.5)',
+            }));
+        }
+        axisLayer.add(new Konva.Text({
+            x: 6 / scale, y: 6 / scale, text: '0,0',
+            fontSize: 11 / scale, fill: '#6c63ff', fontStyle: 'bold',
+        }));
+
+        gridLayer.batchDraw();
+        axisLayer.batchDraw();
+    }
+
+    // ===== ZOOM =====
+    function getScale() { return stage.scaleX(); }
+    function setZoom(newScale, center) {
+        newScale = Math.max(0.15, Math.min(5, newScale));
+        const oldScale = stage.scaleX();
+        const cx = center ? center.x : stageWidth / 2;
+        const cy = center ? center.y : stageHeight / 2;
+        const mousePointTo = {
+            x: (cx - stage.x()) / oldScale,
+            y: (cy - stage.y()) / oldScale,
+        };
+        const newX = cx - mousePointTo.x * newScale;
+        const newY = cy - mousePointTo.y * newScale;
+        stage.scale({ x: newScale, y: newScale });
+        stage.position({
+            x: Math.min(0, newX),
+            y: Math.min(0, newY),
+        });
+        stage.batchDraw();
+        zoomDisplay.textContent = Math.round(newScale * 100) + '%';
+        drawGrid();
+        updateLOD(newScale);
+    }
+
+    function updateLOD(scale) {
+        const isLod = scale < 0.45;
+        mainLayer.find('.layout-object').forEach(group => {
+            const type = group.getAttr('objectType');
+            if (type === 'location') {
+                const preview = group.findOne('.mini-preview-group');
+                const lodIcon = group.findOne('.location-lod-icon');
+                const footerText = group.findOne('.location-footer-text');
+                const footerBg = group.findOne('.location-footer-bg');
+
+                if (lodIcon) {
+                    lodIcon.visible(isLod);
+                    const h = group.height();
+                    lodIcon.height(h - 60);
+                    lodIcon.fontSize(Math.min(48, Math.max(16, h - 70)));
+                }
+                if (preview) {
+                    preview.visible(!isLod);
+                }
+                if (footerText) {
+                    footerText.visible(!isLod);
+                }
+                if (footerBg) {
+                    footerBg.visible(!isLod);
+                }
+            }
+        });
+        mainLayer.batchDraw();
+    }
+
+    stage.on('wheel', (e) => {
+        e.evt.preventDefault();
+        const oldScale = getScale();
+        const pointer = stage.getPointerPosition();
+        const direction = e.evt.deltaY > 0 ? -1 : 1;
+        const factor = 1.08;
+        const newScale = direction > 0 ? oldScale * factor : oldScale / factor;
+        setZoom(newScale, pointer);
+    });
+
+    zoomInBtn.addEventListener('click', () => setZoom(getScale() * 1.2));
+    zoomOutBtn.addEventListener('click', () => setZoom(getScale() / 1.2));
+    zoomResetBtn.addEventListener('click', () => {
+        loadSiteLayout();
+    });
+
+    // Fit to content
+    function fitToContent() {
+        const objects = mainLayer.find('.layout-object');
+        if (objects.length === 0) return;
+
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        objects.forEach(group => {
+            const rect = group.getClientRect({ relativeTo: mainLayer });
+            minX = Math.min(minX, rect.x);
+            minY = Math.min(minY, rect.y);
+            maxX = Math.max(maxX, rect.x + rect.width);
+            maxY = Math.max(maxY, rect.y + rect.height);
+        });
+
+        const contentWidth = maxX - minX;
+        const contentHeight = maxY - minY;
+        if (contentWidth <= 0 || contentHeight <= 0) return;
+
+        const padding = 60;
+        const scaleX = (stageWidth - padding * 2) / contentWidth;
+        const scaleY = (stageHeight - padding * 2) / contentHeight;
+        const newScale = Math.max(0.15, Math.min(scaleX, scaleY, 1.5));
+
+        const centerX = (minX + maxX) / 2;
+        const centerY = (minY + maxY) / 2;
+
+        stage.scale({ x: newScale, y: newScale });
+        stage.position({
+            x: Math.min(0, stageWidth / 2 - centerX * newScale),
+            y: Math.min(0, stageHeight / 2 - centerY * newScale),
+        });
+        stage.batchDraw();
+        zoomDisplay.textContent = Math.round(newScale * 100) + '%';
+        drawGrid();
+        updateLOD(newScale);
+    }
+
+    fitBtn.addEventListener('click', fitToContent);
+
+    // ===== PAN =====
+    stage.on('dragstart', (e) => {
+        if (e.target === stage) {
+            stageContainer.style.cursor = 'grabbing';
+        }
+    });
+
+    stage.on('dragmove', (e) => {
+        if (e.target === stage) {
+            drawGrid();
+        }
+    });
+
+    stage.on('dragend', (e) => {
+        if (e.target === stage) {
+            stageContainer.style.cursor = 'grab';
+        }
+    });
+
+    stage.on('mouseenter', () => {
+        stageContainer.style.cursor = 'grab';
+    });
+
+    stage.on('mouseleave', () => {
+        stageContainer.style.cursor = 'default';
+    });
+
+    // Keyboard Shortcuts
+    document.addEventListener('keydown', (e) => {
+        if ((e.code === 'Delete' || e.code === 'Backspace') && selectedNode) {
+            if (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'SELECT') return;
+            removeNodeFromCanvas(selectedNode);
+        }
+        if (e.ctrlKey && e.code === 'KeyS') {
+            e.preventDefault();
+            saveLayout();
+        }
+    });
+
+    stage.on('mousemove', (e) => {
+        const pos = stage.getPointerPosition();
+        if (pos) {
+            const scale = getScale();
+            const worldX = Math.max(0, Math.round((pos.x - stage.x()) / scale));
+            const worldY = Math.max(0, Math.round((pos.y - stage.y()) / scale));
+            coordsDisplay.textContent = `X: ${worldX}   Y: ${worldY}`;
+        }
+        if (e.target === stage) {
+            stageContainer.style.cursor = 'grab';
+            mainLayer.find('.layout-object').forEach(otherGroup => {
+                deactivateGroupHover(otherGroup);
+            });
+            if (tooltipEl) {
+                tooltipEl.classList.remove('show');
+            }
+        }
+    });
+
+    stage.on('click tap', (e) => {
+        if (e.target === stage) {
+            deselectAll();
+        }
+    });
+
+    window.addEventListener('resize', () => {
+        stageWidth = canvasContainer.clientWidth;
+        stageHeight = canvasContainer.clientHeight;
+        stage.width(stageWidth);
+        stage.height(stageHeight);
+        drawGrid();
+    });
+
+    // Grid Snap Toggle & Select
+    gridSizeSelect.addEventListener('change', () => {
+        gridSize = parseInt(gridSizeSelect.value, 10);
+        drawGrid();
+    });
+
+    snapBtn.addEventListener('click', () => {
+        snapToGrid = !snapToGrid;
+        snapBtn.classList.toggle('active', snapToGrid);
+        snapBtn.textContent = snapToGrid ? '⊞ Snap ON' : '⊞ Snap OFF';
+    });
+
+    // Save Button
+    saveBtn.addEventListener('click', saveLayout);
+
+    // ===== LOAD SITE LAYOUT =====
+    async function loadSiteLayout() {
+        showLoading();
+        emptyState.style.display = 'none';
+
+        try {
+            const resp = await fetch(`${API_BASE}/site-layout/${SITE_ID}/`, {
+                headers: { 'Accept': 'application/json' }
+            });
+            if (!resp.ok) throw new Error('API error');
+            const data = await resp.json();
+
+            allLocations = data.locations || [];
+
+            // Clear canvas
+            mainLayer.find('.layout-object').forEach(n => n.destroy());
+            transformer.nodes([]);
+            selectedNode = null;
+            placedObjects.clear();
+            wallCounter = 0;
+
+            const savedObjects = data.objects || [];
+
+            if (savedObjects.length === 0) {
+                emptyState.style.display = '';
+            }
+
+            savedObjects.forEach(obj => {
+                if (obj.object_type === 'location') {
+                    const locInfo = allLocations.find(l => l.id === obj.object_id);
+                    if (locInfo) {
+                        addLocationToCanvas(locInfo, obj.x, obj.y, obj.rotation, obj.width || 240, obj.height || 180, obj.z_index);
+                    }
+                } else if (obj.object_type === 'wall') {
+                    let wt = 'h';
+                    if (obj.width && obj.height) {
+                        wt = (obj.height > obj.width) ? 'v' : 'h';
+                    } else {
+                        const normalizedRot = ((obj.rotation % 360) + 360) % 360;
+                        wt = (normalizedRot === 90 || normalizedRot === 270) ? 'v' : 'h';
+                    }
+                    const wallItem = {
+                        id: obj.object_id,
+                        wallType: wt,
+                        customWidth: Math.abs(obj.width || 0),
+                        customHeight: Math.abs(obj.height || 0),
+                        parent_type: obj.parent_type || null,
+                        parent_id: obj.parent_id || null,
+                        isFlippedX: obj.parent_type === 'door' && obj.width < 0,
+                        isFlippedY: obj.parent_type === 'door' && obj.height < 0,
+                    };
+                    addWallToCanvas(wallItem, obj.x, obj.y, obj.rotation, obj.z_index);
+                    if (obj.object_id > wallCounter) wallCounter = obj.object_id;
+                }
+            });
+
+            mainLayer.batchDraw();
+            updateSiteOuterBoundary();
+            renderSidebar();
+            drawGrid();
+            hideLoading();
+
+            if (savedObjects.length > 0) {
+                setTimeout(fitToContent, 100);
+                showToast(`Đã tải layout: ${data.site.name} (${savedObjects.length} objects)`, 'success');
+            }
+        } catch (err) {
+            console.error('Error loading site layout:', err);
+            hideLoading();
+            showToast('Lỗi khi tải layout', 'error');
+        }
+    }
+
+    // ===== RENDER SIDEBAR LISTS =====
+    function renderSidebar() {
+        const query = searchInput.value.toLowerCase().trim();
+        locationListEl.innerHTML = '';
+
+        allLocations.forEach(loc => {
+            const name = loc.name || `Location #${loc.id}`;
+            const key = `location_${loc.id}`;
+            if (query && !name.toLowerCase().includes(query)) return;
+
+            const el = document.createElement('div');
+            const isPlaced = placedObjects.has(key);
+            el.className = 'sv-location-card' + (isPlaced ? ' placed' : '');
+            el.dataset.type = 'location';
+            el.dataset.id = loc.id;
+            el.draggable = !isPlaced;
+
+            const metaStr = `🗄 ${loc.rack_count || 0} Racks · ${loc.object_count || 0} Objects (${loc.has_layout ? 'Có sơ đồ' : 'Trống'})`;
+            el.setAttribute('title', `${name} (${metaStr})`);
+
+            let iconHtml = '';
+            const objects = (loc.layout_objects || []).filter(obj => obj.parent_type !== 'wall');
+            if (loc.has_layout && objects.length > 0) {
+                let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+                objects.forEach(obj => {
+                    let w = 10, h = 10;
+                    if (obj.object_type === 'rack') { w = 10.5; h = 14; }
+                    else if (obj.object_type === 'asset') { w = 11; h = 7; }
+                    else if (obj.object_type === 'wall') {
+                        const isV = (obj.height > obj.width);
+                        w = isV ? 1.5 : 16;
+                        h = isV ? 16 : 1.5;
+                    }
+                    minX = Math.min(minX, obj.x);
+                    minY = Math.min(minY, obj.y);
+                    maxX = Math.max(maxX, obj.x + w);
+                    maxY = Math.max(maxY, obj.y + h);
+                });
+                const layoutW = maxX - minX || 1;
+                const layoutH = maxY - minY || 1;
+
+                const scale = Math.min(22 / layoutW, 22 / layoutH, 1.2);
+                const ox = 4 + (22 - layoutW * scale) / 2;
+                const oy = 4 + (22 - layoutH * scale) / 2;
+
+                iconHtml = `
+                    <div style="width:30px; height:30px; position:relative; flex-shrink:0;">
+                        <svg width="30" height="30" viewBox="0 0 30 30" style="position:absolute; top:0; left:0;">
+                            <rect x="2" y="2" width="26" height="26" fill="#141622" stroke="#4b5563" stroke-width="2" />
+                        </svg>
+                `;
+                objects.forEach(obj => {
+                    const x = ox + (obj.x - minX) * scale;
+                    const y = oy + (obj.y - minY) * scale;
+                    let color = '#4b5563';
+                    let w = 8, h = 8;
+                    if (obj.object_type === 'rack') {
+                        const rackInfo = loc.racks_data ? loc.racks_data[String(obj.object_id)] : null;
+                        const freePercentage = rackInfo ? (rackInfo.free_percentage !== undefined ? rackInfo.free_percentage : 100) : 100;
+                        color = getRackColorByUtilization(freePercentage);
+                        w = 10.5 * scale;
+                        h = 14 * scale;
+                    } else if (obj.object_type === 'asset') {
+                        const assetInfo = loc.assets_data ? loc.assets_data[String(obj.object_id)] : null;
+                        const status = assetInfo ? assetInfo.status : 'active';
+                        color = '#e67e22';
+                        if (status === 'active') color = '#2ecc71';
+                        else if (status === 'broken') color = '#e74c3c';
+                        w = 11 * scale;
+                        h = 7 * scale;
+                    } else if (obj.object_type === 'wall') {
+                        const isV = (obj.height > obj.width);
+                        w = (isV ? 1.5 : 16) * scale;
+                        h = (isV ? 16 : 1.5) * scale;
+                    }
+                    iconHtml += `<div style="position:absolute; left:${x}px; top:${y}px; width:${w}px; height:${h}px; background:${color}; border-radius:0.5px; opacity:0.85;"></div>`;
+                });
+                iconHtml += `
+                    </div>
+                `;
+            } else {
+                iconHtml = `
+                    <div style="width:30px; height:30px; position:relative; flex-shrink:0; display:flex; align-items:center; justify-content:center;">
+                        <svg width="30" height="30" viewBox="0 0 30 30" style="position:absolute; top:0; left:0;">
+                            <rect x="2" y="2" width="26" height="26" fill="#141622" stroke="#4b5563" stroke-width="2" />
+                        </svg>
+                        <span style="font-size:10px; color:#8b90a5; z-index:1; opacity:0.4;">🏢</span>
+                    </div>
+                `;
+            }
+
+            el.innerHTML = `
+                <div class="sv-location-icon">
+                    ${iconHtml}
+                </div>
+                <div class="sv-location-info">
+                    <div class="sv-location-name">${name}</div>
+                    <div class="sv-location-meta">
+                        <span>🗄 ${loc.rack_count || 0} Racks</span>
+                        <span>·</span>
+                        <span>${loc.object_count || 0} objects</span>
+                    </div>
+                </div>
+                <span class="sv-location-badge ${loc.has_layout ? 'has-layout' : 'no-layout'}">
+                    ${loc.has_layout ? 'Có sơ đồ' : 'Trống'}
+                </span>
+            `;
+
+            if (!isPlaced) {
+                el.addEventListener('dragstart', (e) => {
+                    e.dataTransfer.setData('application/json', JSON.stringify({ type: 'location', item: loc }));
+                    e.dataTransfer.effectAllowed = 'copy';
+                });
+            }
+
+            locationListEl.appendChild(el);
+        });
+
+        renderSidebarItems(query);
+    }
+
+    function renderSidebarItems(query) {
+        itemListEl.innerHTML = '';
+
+        const genericItems = [
+            { type: 'wall', wallType: 'h', name: 'Cửa (🚪)', meta: 'Kéo để thêm cửa vào mặt bằng', icon: '🚪', parent_type: 'door' }
+        ];
+
+        genericItems.forEach(itemDef => {
+            const searchText = `${itemDef.name} ${itemDef.meta}`.toLowerCase();
+            if (query && !searchText.includes(query)) return;
+
+            const el = document.createElement('div');
+            el.className = 'sv-location-card';
+            el.draggable = true;
+            el.setAttribute('title', `${itemDef.name} (${itemDef.meta})`);
+
+            el.innerHTML = `
+                <div class="sv-location-icon" style="background:#57606f; display:flex; align-items:center; justify-content:center; border-radius:6px; width:30px; height:30px;">
+                    <span style="font-size:16px;">${itemDef.icon}</span>
+                </div>
+                <div class="sv-location-info">
+                    <div class="sv-location-name">${itemDef.name}</div>
+                    <div class="sv-location-meta">
+                        <span>${itemDef.meta}</span>
+                    </div>
+                </div>
+            `;
+
+            el.addEventListener('dragstart', (e) => {
+                e.dataTransfer.setData('application/json', JSON.stringify({
+                    type: itemDef.type,
+                    item: {
+                        id: 0,
+                        wallType: itemDef.wallType,
+                        parent_type: itemDef.parent_type
+                    }
+                }));
+                e.dataTransfer.effectAllowed = 'copy';
+            });
+
+            itemListEl.appendChild(el);
+        });
+    }
+
+    searchInput.addEventListener('input', renderSidebar);
+
+    // ===== DROP ON CANVAS =====
+    const stageContainerEl = document.getElementById('sv-stage-container');
+    stageContainerEl.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'copy';
+    });
+    stageContainerEl.addEventListener('drop', (e) => {
+        e.preventDefault();
+        const raw = e.dataTransfer.getData('application/json');
+        if (!raw) return;
+        const { type, item } = JSON.parse(raw);
+
+        if (type === 'wall') {
+            wallCounter++;
+            item.id = wallCounter;
+        }
+
+        const key = `${type}_${item.id}`;
+        if (placedObjects.has(key)) return;
+
+        const rect = stageContainerEl.getBoundingClientRect();
+        const scale = getScale();
+        let worldX = (e.clientX - rect.left - stage.x()) / scale;
+        let worldY = (e.clientY - rect.top - stage.y()) / scale;
+        worldX = snapValue(worldX);
+        worldY = snapValue(worldY);
+        worldX = Math.max(0, worldX);
+        worldY = Math.max(0, worldY);
+
+        let initialRotation = 0;
+        if (type === 'wall' && item.parent_type === 'door') {
+            const objects = mainLayer.find('.layout-object').filter(g => g.getAttr('parentType') !== 'door');
+            if (objects.length > 0) {
+                let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+                objects.forEach(g => {
+                    const rect = g.getClientRect({ relativeTo: mainLayer });
+                    minX = Math.min(minX, rect.x);
+                    minY = Math.min(minY, rect.y);
+                    maxX = Math.max(maxX, rect.x + rect.width);
+                    maxY = Math.max(maxY, rect.y + rect.height);
+                });
+
+                const padding = 10;
+                const x1 = minX - padding;
+                const x2 = maxX + padding;
+                const y1 = minY - padding;
+                const y2 = maxY + padding;
+
+                const clampedX = Math.max(x1, Math.min(x2, worldX));
+                const clampedY = Math.max(y1, Math.min(y2, worldY));
+
+                const dist = (ax, ay, bx, by) => Math.sqrt((ax - bx) ** 2 + (ay - by) ** 2);
+
+                const d_top = dist(worldX, worldY, clampedX, y1);
+                const d_bottom = dist(worldX, worldY, clampedX, y2);
+                const d_left = dist(worldX, worldY, x1, clampedY);
+                const d_right = dist(worldX, worldY, x2, clampedY);
+
+                const minDist = Math.min(d_top, d_bottom, d_left, d_right);
+
+                if (minDist === d_top) {
+                    worldX = clampedX;
+                    worldY = y1 + 50;
+                    initialRotation = 180;
+                } else if (minDist === d_bottom) {
+                    worldX = clampedX;
+                    worldY = y2 - 50;
+                    initialRotation = 0;
+                } else if (minDist === d_left) {
+                    worldX = x1 + 50;
+                    worldY = clampedY;
+                    initialRotation = 90;
+                } else if (minDist === d_right) {
+                    worldX = x2 - 50;
+                    worldY = clampedY;
+                    initialRotation = 270;
+                }
+            }
+        }
+
+        if (type === 'location') {
+            addLocationToCanvas(item, worldX, worldY, 0, 240, 180, 0);
+        } else if (type === 'wall') {
+            addWallToCanvas(item, worldX, worldY, initialRotation, 0);
+        }
+        mainLayer.batchDraw();
+        updateSiteOuterBoundary();
+        renderSidebar();
+
+        emptyState.style.display = 'none';
+    });
+
+    // ===== RENDER MINI RACKS & WALLS INSIDE A LOCATION CARD =====
+    function drawMiniLayout(containerGroup, locInfo, w, h) {
+        // Clear previous previews
+        const previewGroup = containerGroup.findOne('.mini-preview-group');
+        if (previewGroup) previewGroup.destroy();
+
+        const group = new Konva.Group({ name: 'mini-preview-group', listening: false });
+        containerGroup.add(group);
+
+        const bodyPadding = 12;
+        const bodyY = 35;
+        const footerH = 25;
+        const availableW = w - bodyPadding * 2;
+        const availableH = h - bodyY - footerH;
+
+        // Fallback for extremely small sizes
+        if (availableW <= 15 || availableH <= 15) {
+            const iconText = new Konva.Text({
+                text: '🏢',
+                x: 0, y: bodyY, width: w, height: availableH,
+                fontSize: Math.min(24, Math.max(8, availableH)), fontFamily: 'Inter, sans-serif',
+                align: 'center', verticalAlign: 'middle',
+                opacity: 0.3
+            });
+            group.add(iconText);
+            return;
+        }
+
+        const objects = (locInfo.layout_objects || []).filter(obj => obj.parent_type !== 'wall');
+        if (objects.length === 0) {
+            // Draw placeholder dashed box
+            if (availableW > 60 && availableH > 40) {
+                const placeholder = new Konva.Rect({
+                    x: 10, y: 35, width: w - 20, height: h - 60,
+                    stroke: '#3b3f54', strokeWidth: 1.5, dash: [4, 4], cornerRadius: 4
+                });
+                const placeholderText = new Konva.Text({
+                    text: 'Chưa sắp xếp tủ rack\n(Click đúp để vẽ)',
+                    x: 10, y: 35, width: w - 20, height: h - 60,
+                    fontSize: 10, fontFamily: 'Inter, sans-serif', fill: 'rgba(255,255,255,0.2)',
+                    align: 'center', verticalAlign: 'middle',
+                });
+                group.add(placeholder, placeholderText);
+            } else {
+                const placeholderText = new Konva.Text({
+                    text: '🏢',
+                    x: 0, y: bodyY, width: w, height: availableH,
+                    fontSize: Math.min(20, Math.max(8, availableH)), fontFamily: 'Inter, sans-serif',
+                    align: 'center', verticalAlign: 'middle',
+                    opacity: 0.2
+                });
+                group.add(placeholderText);
+            }
+            return;
+        }
+
+        // Compute layout bounds
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        objects.forEach(obj => {
+            let width = 0, height = 0;
+            if (obj.object_type === 'rack') {
+                width = 105;
+                height = 140;
+            } else if (obj.object_type === 'asset') {
+                width = 110;
+                height = 70;
+            } else if (obj.object_type === 'wall') {
+                const isVertical = (obj.height > obj.width);
+                width = obj.width || (isVertical ? 15 : 160);
+                height = obj.height || (isVertical ? 160 : 15);
+            }
+            minX = Math.min(minX, obj.x);
+            minY = Math.min(minY, obj.y);
+            maxX = Math.max(maxX, obj.x + width);
+            maxY = Math.max(maxY, obj.y + height);
+        });
+
+        const layoutW = maxX - minX;
+        const layoutH = maxY - minY;
+        if (layoutW <= 0 || layoutH <= 0) return;
+
+        const scaleX = availableW / layoutW;
+        const scaleY = availableH / layoutH;
+        const scale = Math.min(scaleX, scaleY, 0.8); // cap max scale to preserve clean display
+
+        const offsetX = bodyPadding + (availableW - layoutW * scale) / 2;
+        const offsetY = bodyY + (availableH - layoutH * scale) / 2;
+
+        // Draw mini objects
+        objects.forEach(obj => {
+            const x = offsetX + (obj.x - minX) * scale;
+            const y = offsetY + (obj.y - minY) * scale;
+
+            const miniObjGroup = new Konva.Group({ x, y, rotation: obj.rotation });
+
+            if (obj.object_type === 'rack') {
+                const width = 105 * scale;
+                const height = 140 * scale;
+
+                const rackInfo = locInfo.racks_data[String(obj.object_id)];
+                const freePercentage = rackInfo ? (rackInfo.free_percentage !== undefined ? rackInfo.free_percentage : 100) : 100;
+                const color = getRackColorByUtilization(freePercentage);
+
+                miniObjGroup.add(new Konva.Rect({
+                    width, height, fill: '#141622', stroke: color, strokeWidth: 1, cornerRadius: 1.5
+                }));
+                // Draw simple indicators inside mini rack
+                miniObjGroup.add(new Konva.Rect({
+                    x: width * 0.15, y: height * 0.15, width: width * 0.7, height: height * 0.3,
+                    fill: color, opacity: 0.85, cornerRadius: 0.5
+                }));
+                if (width > 12) {
+                    miniObjGroup.add(new Konva.Text({
+                        text: rackInfo ? rackInfo.name : '',
+                        x: 0, y: height * 0.55, width, fontSize: Math.max(5, 8 * scale),
+                        fontFamily: 'Inter, sans-serif', fontStyle: 'bold', fill: '#ffffff', align: 'center',
+                    }));
+                }
+            } else if (obj.object_type === 'asset') {
+                const width = 110 * scale;
+                const height = 70 * scale;
+
+                const assetInfo = locInfo.assets_data[String(obj.object_id)];
+                const status = assetInfo ? assetInfo.status : 'active';
+                let color = '#e67e22';
+                if (status === 'active') color = '#2ecc71';
+                else if (status === 'broken') color = '#e74c3c';
+
+                miniObjGroup.add(new Konva.Rect({
+                    width, height, fill: '#1b1410', stroke: color, strokeWidth: 0.8, cornerRadius: 1.5
+                }));
+            } else if (obj.object_type === 'wall') {
+                const isVertical = (obj.height > obj.width);
+                const width = (obj.width || (isVertical ? 15 : 160)) * scale;
+                const height = (obj.height || (isVertical ? 160 : 15)) * scale;
+
+                miniObjGroup.add(new Konva.Rect({
+                    width, height, fill: '#4b5563', stroke: '#6b7280', strokeWidth: 0.5, cornerRadius: 0.5
+                }));
+            }
+
+            group.add(miniObjGroup);
+        });
+    }
+
+    // ===== ADD LOCATION TO CANVAS =====
+    function addLocationToCanvas(locInfo, x, y, rotation, w, h, zIndex) {
+        const key = `location_${locInfo.id}`;
+        placedObjects.set(key, true);
+
+        const group = new Konva.Group({
+            x, y, rotation, draggable: true,
+            name: 'layout-object',
+            dragBoundFunc: function (pos) {
+                return { x: Math.max(stage.x(), pos.x), y: Math.max(stage.y(), pos.y) };
+            },
+        });
+        group.setAttr('objectType', 'location');
+        group.setAttr('objectId', locInfo.id);
+        group.setAttr('zIndex', zIndex);
+        group.setAttr('baseX', x);
+        group.setAttr('baseY', y);
+        group.width(w);
+        group.height(h);
+
+        // Background shadow & card container
+        const shadow = new Konva.Rect({
+            width: w, height: h, fill: 'rgba(0,0,0,0.3)', cornerRadius: 0, x: 4, y: 4, name: 'location-shadow'
+        });
+        const borderStroke = '#4b5563';
+        const body = new Konva.Rect({
+            width: w, height: h, fill: '#141622', stroke: borderStroke, strokeWidth: 6, cornerRadius: 0, name: 'location-body'
+        });
+
+        // Inner border representing inner wall line
+        const innerBorder = new Konva.Rect({
+            x: 3, y: 3, width: w - 6, height: h - 6, fill: 'transparent', stroke: 'rgba(255,255,255,0.05)', strokeWidth: 1, cornerRadius: 0, name: 'location-inner-border'
+        });
+
+        // Header section (title and action icons) - transparent background
+        const headerBg = new Konva.Rect({
+            width: w, height: 32, fill: 'rgba(0,0,0,0)', cornerRadius: 0, name: 'location-header-bg'
+        });
+        const headerText = new Konva.Text({
+            text: locInfo.name.toUpperCase(), x: 12, y: 12, width: w - 24,
+            fontSize: 11, fontFamily: 'Inter, sans-serif', fontStyle: 'bold', fill: '#a9b1d6',
+            align: 'center', ellipsis: true, wrap: 'none', name: 'location-header-text'
+        });
+
+        // Footer info (Racks count & status) - transparent background
+        const footerBg = new Konva.Rect({
+            y: h - 22, width: w, height: 22, fill: 'rgba(0,0,0,0)', cornerRadius: 0, name: 'location-footer-bg'
+        });
+        const footerText = new Konva.Text({
+            text: `${locInfo.rack_count || 0} RACKS  •  ${locInfo.object_count || 0} OBJECTS`,
+            x: 12, y: h - 16, width: w - 24,
+            fontSize: 8, fontFamily: 'Inter, sans-serif', fontStyle: 'bold', fill: '#565f89',
+            align: 'center', name: 'location-footer-text'
+        });
+
+        const lodIcon = new Konva.Text({
+            text: '🏢',
+            x: 0, y: 35, width: w, height: h - 60,
+            fontSize: 48, fontFamily: 'Inter, sans-serif',
+            fill: '#6c63ff', align: 'center', verticalAlign: 'middle',
+            name: 'location-lod-icon',
+            visible: false
+        });
+
+        group.add(shadow, body, innerBorder, headerBg, headerText, footerBg, footerText, lodIcon);
+
+        // Draw miniature preview
+        drawMiniLayout(group, locInfo, w, h);
+
+        setupGroupInteractions(group);
+        mainLayer.add(group);
+    }
+
+    // ===== UPDATE DOOR GRAPHICS (FLIP) =====
+    function updateDoorGraphics(group) {
+        if (group.getAttr('parentType') !== 'door') return;
+        const isFlippedX = group.getAttr('isFlippedX') || false;
+        const isFlippedY = group.getAttr('isFlippedY') || false;
+        const w = group.width();
+        const h = group.height();
+        
+        const doorPanel = group.findOne('.door-panel');
+        const doorArc = group.findOne('.door-arc');
+        const body = group.findOne('.wall-body');
+        const shadow = group.findOne('.wall-shadow');
+        
+        if (body) {
+            body.y(isFlippedY ? h : 0);
+        }
+        if (shadow) {
+            shadow.y(isFlippedY ? h + 2 : 2);
+        }
+        
+        if (doorPanel) {
+            const hx = isFlippedX ? w : 0;
+            const py = isFlippedY ? 2 * h : 0;
+            doorPanel.points([hx, h, hx, py]);
+        }
+        if (doorArc) {
+            const hx = isFlippedX ? w : 0;
+            doorArc.x(hx);
+            doorArc.y(h);
+            
+            let arcRot = 270;
+            if (!isFlippedX && !isFlippedY) arcRot = 270;
+            else if (isFlippedX && !isFlippedY) arcRot = 180;
+            else if (!isFlippedX && isFlippedY) arcRot = 0;
+            else if (isFlippedX && isFlippedY) arcRot = 90;
+            
+            doorArc.rotation(arcRot);
+            doorArc.innerRadius(w);
+            doorArc.outerRadius(w);
+        }
+    }
+
+    // ===== ADD WALL TO CANVAS =====
+    function addWallToCanvas(wallInfo, x, y, rotation, zIndex) {
+        const key = `wall_${wallInfo.id}`;
+        placedObjects.set(key, true);
+
+        const wt = wallInfo.wallType || 'h';
+        const isVertical = (wt === 'v');
+        const wallLength = 160;
+        const wallThickness = 15;
+
+        let w = wallInfo.customWidth || (wallInfo.parent_type === 'door' ? 50 : (isVertical ? wallThickness : wallLength));
+        let h = wallInfo.customHeight || (wallInfo.parent_type === 'door' ? 50 : (isVertical ? wallLength : wallThickness));
+
+        const group = new Konva.Group({
+            x, y, rotation, draggable: true,
+            name: 'layout-object',
+            dragBoundFunc: function (pos) {
+                if (wallInfo.parent_type === 'door') {
+                    const objects = mainLayer.find('.layout-object').filter(g => g !== group && g.getAttr('parentType') !== 'door');
+                    if (objects.length > 0) {
+                        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+                        objects.forEach(g => {
+                            const rect = g.getClientRect({ relativeTo: mainLayer });
+                            minX = Math.min(minX, rect.x);
+                            minY = Math.min(minY, rect.y);
+                            maxX = Math.max(maxX, rect.x + rect.width);
+                            maxY = Math.max(maxY, rect.y + rect.height);
+                        });
+
+                        const padding = 10;
+                        const boundaryX = minX - padding;
+                        const boundaryY = minY - padding;
+                        const boundaryW = (maxX - minX) + padding * 2;
+                        const boundaryH = (maxY - minY) + padding * 2;
+
+                        const scale = stage.scaleX();
+                        const stageX = stage.x();
+                        const stageY = stage.y();
+
+                        const worldX = (pos.x - stageX) / scale;
+                        const worldY = (pos.y - stageY) / scale;
+
+                        const x1 = boundaryX;
+                        const x2 = boundaryX + boundaryW;
+                        const y1 = boundaryY;
+                        const y2 = boundaryY + boundaryH;
+
+                        const clampedX = Math.max(x1, Math.min(x2, worldX));
+                        const clampedY = Math.max(y1, Math.min(y2, worldY));
+
+                        const dist = (ax, ay, bx, by) => Math.sqrt((ax - bx) ** 2 + (ay - by) ** 2);
+
+                        const d_top = dist(worldX, worldY, clampedX, y1);
+                        const d_bottom = dist(worldX, worldY, clampedX, y2);
+                        const d_left = dist(worldX, worldY, x1, clampedY);
+                        const d_right = dist(worldX, worldY, x2, clampedY);
+
+                        const minDist = Math.min(d_top, d_bottom, d_left, d_right);
+
+                        let projectedX = worldX;
+                        let projectedY = worldY;
+
+                        const dw = group.width();
+                        const dh = group.height();
+
+                        if (minDist === d_top) {
+                            projectedX = clampedX;
+                            projectedY = y1 + dh;
+                        } else if (minDist === d_bottom) {
+                            projectedX = clampedX;
+                            projectedY = y2 - dh;
+                        } else if (minDist === d_left) {
+                            projectedX = x1 + dh;
+                            projectedY = clampedY;
+                        } else if (minDist === d_right) {
+                            projectedX = x2 - dh;
+                            projectedY = clampedY;
+                        }
+
+                        return {
+                            x: projectedX * scale + stageX,
+                            y: projectedY * scale + stageY
+                        };
+                    }
+                }
+                return { x: Math.max(stage.x(), pos.x), y: Math.max(stage.y(), pos.y) };
+            },
+        });
+        group.setAttr('objectType', 'wall');
+        group.setAttr('objectId', wallInfo.id);
+        group.setAttr('zIndex', zIndex);
+        group.setAttr('baseX', x);
+        group.setAttr('baseY', y);
+        group.setAttr('parentType', wallInfo.parent_type || null);
+        group.setAttr('parentId', wallInfo.parent_id || null);
+        group.width(w);
+        group.height(h);
+
+        const isDoor = (wallInfo.parent_type === 'door');
+
+        if (isDoor) {
+            // Door shadow
+            const shadow = new Konva.Rect({ width: w, height: h, fill: 'rgba(0,0,0,0.15)', x: 2, y: 2, name: 'wall-shadow' });
+
+            // Door select/drag box frame
+            const body = new Konva.Rect({
+                width: w, height: h, fill: 'rgba(108, 99, 255, 0.03)', stroke: '#2e3245', strokeWidth: 1, dash: [4, 4], name: 'wall-body'
+            });
+
+            // Door panel line
+            const doorPanel = new Konva.Line({
+                points: [0, h, 0, 0], stroke: '#8b90a5', strokeWidth: 2.5, name: 'door-panel'
+            });
+
+            // Door swing arc path
+            const doorArc = new Konva.Arc({
+                x: 0, y: h, innerRadius: w, outerRadius: w, angle: 90, rotation: 270, stroke: 'rgba(139, 144, 165, 0.4)', strokeWidth: 1.5, dash: [3, 3], name: 'door-arc'
+            });
+
+            const label = new Konva.Text({
+                text: `Cửa D${wallInfo.id}`, x: 0, y: h - 12, width: w,
+                fontSize: 8, fontFamily: 'Inter, sans-serif', fontStyle: 'bold',
+                fill: 'rgba(255, 255, 255, 0.4)', align: 'center',
+                name: 'wall-label'
+            });
+
+            group.add(shadow, body, doorPanel, doorArc, label);
+            
+            const isFlippedX = wallInfo.isFlippedX || false;
+            const isFlippedY = wallInfo.isFlippedY || false;
+            group.setAttr('isFlippedX', isFlippedX);
+            group.setAttr('isFlippedY', isFlippedY);
+            updateDoorGraphics(group);
+        } else {
+            // Shadow & Body
+            const shadow = new Konva.Rect({ width: w, height: h, fill: 'rgba(0,0,0,0.35)', cornerRadius: 2, x: 2, y: 2, name: 'wall-shadow' });
+            const body = new Konva.Rect({ width: w, height: h, fill: '#222736', stroke: '#4b5563', strokeWidth: 1.5, cornerRadius: 2, name: 'wall-body' });
+
+            // Hatch pattern lines
+            const pg = new Konva.Group({ name: 'hatch-group', clipX: 0, clipY: 0, clipWidth: w, clipHeight: h, listening: false });
+            const hatchSpacing = 16;
+            if (h > w) {
+                for (let yOffset = -w; yOffset < h; yOffset += hatchSpacing) {
+                    pg.add(new Konva.Line({ points: [0, yOffset + w, w, yOffset], stroke: 'rgba(255, 255, 255, 0.08)', strokeWidth: 1.5 }));
+                }
+            } else {
+                for (let xOffset = -h; xOffset < w; xOffset += hatchSpacing) {
+                    pg.add(new Konva.Line({ points: [xOffset, h, xOffset + h, 0], stroke: 'rgba(255, 255, 255, 0.08)', strokeWidth: 1.5 }));
+                }
+            }
+
+            const label = new Konva.Text({
+                text: `Tường W${wallInfo.id}`, x: 0, y: 0, width: w, height: h,
+                fontSize: Math.min(w, h) < 14 ? 8 : 10,
+                fontFamily: 'Inter, sans-serif', fontStyle: 'bold',
+                fill: 'rgba(255, 255, 255, 0.5)', align: 'center', verticalAlign: 'middle',
+                name: 'wall-label'
+            });
+
+            group.add(shadow, body, pg, label);
+        }
+
+        setupGroupInteractions(group);
+        mainLayer.add(group);
+    }
+
+    // ===== INTERACTIVE LISTENERS (DRAG, TRANSFORM, HOVER) =====
+    function setupGroupInteractions(group) {
+        const type = group.getAttr('objectType');
+        const id = group.getAttr('objectId');
+        let initialClosedEdgeCenter = null;
+
+        group.on('transformstart', () => {
+            if (group.getAttr('parentType') === 'door') {
+                const w = group.width();
+                const h = group.height();
+                const rot = group.rotation();
+                const rad = rot * Math.PI / 180;
+                initialClosedEdgeCenter = {
+                    x: group.x() + (w/2) * Math.cos(rad) - h * Math.sin(rad),
+                    y: group.y() + (w/2) * Math.sin(rad) + h * Math.cos(rad)
+                };
+            }
+        });
+
+        group.on('dragstart', () => {
+            deselectAll();
+            selectNode(group);
+        });
+
+        group.on('dragmove', () => {
+            let x = group.x();
+            let y = group.y();
+
+            const isDoor = (group.getAttr('parentType') === 'door');
+
+            if (isDoor) {
+                const objects = mainLayer.find('.layout-object').filter(g => g !== group && g.getAttr('parentType') !== 'door');
+                if (objects.length > 0) {
+                    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+                    objects.forEach(g => {
+                        const rect = g.getClientRect({ relativeTo: mainLayer });
+                        minX = Math.min(minX, rect.x);
+                        minY = Math.min(minY, rect.y);
+                        maxX = Math.max(maxX, rect.x + rect.width);
+                        maxY = Math.max(maxY, rect.y + rect.height);
+                    });
+
+                    const padding = 10;
+                    const x1 = minX - padding;
+                    const x2 = maxX + padding;
+                    const y1 = minY - padding;
+                    const y2 = maxY + padding;
+
+                    const dw = group.width();
+                    const dh = group.height();
+                    const rot = group.rotation();
+                    const rad = rot * Math.PI / 180;
+
+                    // 1. Calculate current world coordinates of I
+                    const cx = x + (dw/2) * Math.cos(rad) - dh * Math.sin(rad);
+                    const cy = y + (dw/2) * Math.sin(rad) + dh * Math.cos(rad);
+
+                    const clampedX = Math.max(x1, Math.min(x2, cx));
+                    const clampedY = Math.max(y1, Math.min(y2, cy));
+
+                    const dist = (ax, ay, bx, by) => Math.sqrt((ax - bx) ** 2 + (ay - by) ** 2);
+
+                    const d_top = dist(cx, cy, clampedX, y1);
+                    const d_bottom = dist(cx, cy, clampedX, y2);
+                    const d_left = dist(cx, cy, x1, clampedY);
+                    const d_right = dist(cx, cy, x2, clampedY);
+
+                    const minDist = Math.min(d_top, d_bottom, d_left, d_right);
+
+                    let snappedCx = cx;
+                    let snappedCy = cy;
+                    let newRot = rot;
+
+                    if (minDist === d_top) {
+                        snappedCx = clampedX;
+                        snappedCy = y1;
+                    } else if (minDist === d_bottom) {
+                        snappedCx = clampedX;
+                        snappedCy = y2;
+                    } else if (minDist === d_left) {
+                        snappedCx = x1;
+                        snappedCy = clampedY;
+                    } else if (minDist === d_right) {
+                        snappedCx = x2;
+                        snappedCy = clampedY;
+                    }
+
+                    // 3. Compute group coordinates from snapped I position
+                    const rad_new = newRot * Math.PI / 180;
+                    const gx_new = snappedCx - (dw/2) * Math.cos(rad_new) + dh * Math.sin(rad_new);
+                    const gy_new = snappedCy - (dw/2) * Math.sin(rad_new) - dh * Math.cos(rad_new);
+
+                    group.position({ x: gx_new, y: gy_new });
+                    if (group.rotation() !== newRot) {
+                        group.rotation(newRot);
+                    }
+                }
+            } else {
+                if (snapToGrid) {
+                    x = snapValue(x);
+                    y = snapValue(y);
+                }
+                x = Math.max(0, x);
+                y = Math.max(0, y);
+                group.x(x);
+                group.y(y);
+            }
+            updateSiteOuterBoundary();
+        });
+
+        group.on('dragend', () => {
+            group.setAttr('baseX', group.x());
+            group.setAttr('baseY', group.y());
+            mainLayer.batchDraw();
+            updateSiteOuterBoundary();
+        });
+
+        // Resize / Transform Redraw
+        group.on('transform', () => {
+            const scaleX = group.scaleX();
+            const scaleY = group.scaleY();
+
+            // Set size directly based on scale and reset scale to 1
+            const newW = snapValue(group.width() * scaleX);
+            const newH = snapValue(group.height() * scaleY);
+
+            group.width(newW);
+            group.height(newH);
+            group.scale({ x: 1, y: 1 });
+
+            // Snap position when resizing from left/top anchors
+            if (group.getAttr('parentType') === 'door' && initialClosedEdgeCenter) {
+                const w = group.width();
+                const h = group.height();
+                const rot = group.rotation();
+                const rad = rot * Math.PI / 180;
+                
+                const gx_new = initialClosedEdgeCenter.x - (w/2) * Math.cos(rad) + h * Math.sin(rad);
+                const gy_new = initialClosedEdgeCenter.y - (w/2) * Math.sin(rad) - h * Math.cos(rad);
+                
+                group.position({ x: gx_new, y: gy_new });
+            } else {
+                let x = group.x();
+                let y = group.y();
+                if (snapToGrid) {
+                    x = snapValue(x);
+                    y = snapValue(y);
+                }
+                x = Math.max(0, x);
+                y = Math.max(0, y);
+                group.x(x);
+                group.y(y);
+            }
+
+            // Redraw background & boundaries
+            const body = group.findOne('.' + type + '-body');
+            const shadow = group.findOne('.' + type + '-shadow');
+            if (body) {
+                body.width(newW);
+                body.height(newH);
+            }
+            if (shadow) {
+                shadow.width(newW);
+                shadow.height(newH);
+            }
+
+            if (type === 'location') {
+                const innerBorder = group.findOne('.location-inner-border');
+                if (innerBorder) {
+                    innerBorder.width(newW - 6);
+                    innerBorder.height(newH - 6);
+                }
+
+                const headerBg = group.findOne('.location-header-bg');
+                if (headerBg) headerBg.width(newW);
+                const headerText = group.findOne('.location-header-text');
+                if (headerText) headerText.width(newW - 24);
+
+                const footerBg = group.findOne('.location-footer-bg');
+                if (footerBg) {
+                    footerBg.y(newH - 22);
+                    footerBg.width(newW);
+                }
+                const footerText = group.findOne('.location-footer-text');
+                if (footerText) {
+                    footerText.y(newH - 16);
+                    footerText.width(newW - 24);
+                }
+
+
+                // Re-center mini preview
+                const locInfo = allLocations.find(l => l.id === id);
+                if (locInfo) {
+                    drawMiniLayout(group, locInfo, newW, newH);
+                }
+            } else if (type === 'wall') {
+                const isDoor = (group.getAttr('parentType') === 'door');
+                if (isDoor) {
+                    updateDoorGraphics(group);
+                    const label = group.findOne('.wall-label');
+                    if (label) {
+                        label.y(newH - 12);
+                        label.width(newW);
+                    }
+                } else {
+                    const hatch = group.findOne('.hatch-group');
+                    if (hatch) {
+                        hatch.destroy();
+                        const pg = new Konva.Group({ name: 'hatch-group', clipX: 0, clipY: 0, clipWidth: newW, clipHeight: newH, listening: false });
+                        const hatchSpacing = 16;
+                        if (newH > newW) {
+                            for (let yOffset = -newW; yOffset < newH; yOffset += hatchSpacing) {
+                                pg.add(new Konva.Line({ points: [0, yOffset + newW, newW, yOffset], stroke: 'rgba(255, 255, 255, 0.08)', strokeWidth: 1.5 }));
+                            }
+                        } else {
+                            for (let xOffset = -newH; xOffset < newW; xOffset += hatchSpacing) {
+                                pg.add(new Konva.Line({ points: [xOffset, newH, xOffset + newH, 0], stroke: 'rgba(255, 255, 255, 0.08)', strokeWidth: 1.5 }));
+                            }
+                        }
+                        group.add(pg);
+                    }
+
+                    const label = group.findOne('.wall-label');
+                    if (label) {
+                        label.width(newW);
+                        label.height(newH);
+                        label.fontSize(Math.min(newW, newH) < 14 ? 8 : 10);
+                    }
+                }
+            }
+
+            mainLayer.batchDraw();
+            updateSiteOuterBoundary();
+        });
+
+        group.on('transformend', () => {
+            initialClosedEdgeCenter = null;
+            group.setAttr('baseX', group.x());
+            group.setAttr('baseY', group.y());
+            mainLayer.batchDraw();
+            updateSiteOuterBoundary();
+        });
+
+        // Hover events
+        group.on('mouseenter', () => {
+            if (stage.isDragging()) return;
+            stageContainer.style.cursor = 'pointer';
+
+            const body = group.findOne('.' + type + '-body');
+            if (body) {
+                body.stroke('#6c63ff');
+                body.strokeWidth(2.5);
+                body.shadowColor('#6c63ff');
+                body.shadowBlur(10);
+                body.shadowOpacity(0.5);
+            }
+
+            // Show details tooltip
+            if (type === 'location') {
+                const locInfo = allLocations.find(l => l.id === id);
+                if (locInfo && tooltipEl) {
+                    tooltipEl.innerHTML = `
+                        <div class="sv-tooltip-title">🏢 ${locInfo.name}</div>
+                        <div class="sv-tooltip-row"><span class="sv-tooltip-label">Tủ Rack:</span><span class="sv-tooltip-val">${locInfo.rack_count || 0}</span></div>
+                        <div class="sv-tooltip-row"><span class="sv-tooltip-label">Đối tượng:</span><span class="sv-tooltip-val">${locInfo.object_count || 0}</span></div>
+                        <div class="sv-tooltip-row"><span class="sv-tooltip-label">Bản đồ phòng:</span><span class="sv-tooltip-badge" style="background:${locInfo.has_layout ? 'var(--sv-success)' : 'var(--sv-text-muted)'}">${locInfo.has_layout ? 'Đã vẽ' : 'Chưa vẽ'}</span></div>
+                        <div class="sv-tooltip-row" style="margin-top:6px; font-style:italic; color:var(--sv-text-muted);"><span>Nhấp đúp để vào chi tiết phòng</span></div>
+                    `;
+                    tooltipEl.classList.add('show');
+                }
+            }
+            mainLayer.batchDraw();
+        });
+
+        group.on('mousemove', () => {
+            const pointer = stage.getPointerPosition();
+            if (pointer && tooltipEl) {
+                tooltipEl.style.left = (pointer.x + 15) + 'px';
+                tooltipEl.style.top = (pointer.y + 15) + 'px';
+            }
+        });
+
+        group.on('mouseleave', () => {
+            stageContainer.style.cursor = 'default';
+            const body = group.findOne('.' + type + '-body');
+            if (body) {
+                body.stroke(selectedNode === group ? '#6c63ff' : '#2e3245');
+                body.strokeWidth(selectedNode === group ? 2.5 : 2);
+                body.shadowBlur(0);
+                body.shadowOpacity(0);
+            }
+            if (tooltipEl) tooltipEl.classList.remove('show');
+            mainLayer.batchDraw();
+        });
+
+        // Double click/tap navigation to location layout editor
+        group.on('dblclick dbltap', () => {
+            if (type === 'location') {
+                window.open(`/dcim/locations/${id}/visualization/`, '_blank');
+            }
+        });
+
+        // Select node on click
+        group.on('click tap', (e) => {
+            e.cancelBubble = true;
+            selectNode(group);
+        });
+    }
+
+    // Deactivate hover state manually
+    function deactivateGroupHover(group) {
+        const type = group.getAttr('objectType');
+        const body = group.findOne('.' + type + '-body');
+        if (body) {
+            body.stroke(selectedNode === group ? '#6c63ff' : (type === 'wall' ? '#4b5563' : '#2e3245'));
+            body.strokeWidth(selectedNode === group ? 2.5 : 2);
+            body.shadowBlur(0);
+            body.shadowOpacity(0);
+        }
+    }
+
+    // ===== SELECTION & TRANSFORMER =====
+    function deselectAll() {
+        if (selectedNode) {
+            deactivateGroupHover(selectedNode);
+        }
+        selectedNode = null;
+        transformer.nodes([]);
+        contextMenu.classList.remove('show');
+        mainLayer.batchDraw();
+    }
+
+    function selectNode(node) {
+        deselectAll();
+        selectedNode = node;
+        transformer.nodes([node]);
+        const type = node.getAttr('objectType');
+        const body = node.findOne('.' + type + '-body');
+        if (body) {
+            body.stroke('#6c63ff');
+            body.strokeWidth(2.5);
+        }
+        mainLayer.batchDraw();
+    }
+
+    function removeNodeFromCanvas(node) {
+        const type = node.getAttr('objectType');
+        const id = node.getAttr('objectId');
+        const key = `${type}_${id}`;
+
+        transformer.nodes([]);
+        node.destroy();
+        placedObjects.delete(key);
+        selectedNode = null;
+
+        mainLayer.batchDraw();
+        updateSiteOuterBoundary();
+        renderSidebar();
+        showToast('Đã xóa đối tượng khỏi mặt bằng', 'info');
+
+        // Check if canvas is completely empty
+        if (mainLayer.find('.layout-object').length === 0) {
+            emptyState.style.display = '';
+        }
+    }
+
+    // ===== CONTEXT MENU =====
+    stage.on('contextmenu', (e) => {
+        e.evt.preventDefault();
+        if (e.target === stage) {
+            deselectAll();
+            return;
+        }
+
+        const group = e.target.getParent();
+        if (!group || !group.hasName('layout-object')) return;
+
+        selectNode(group);
+
+        const type = group.getAttr('objectType');
+        const editLocItem = document.getElementById('ctx-edit-layout');
+        if (type === 'location') {
+            editLocItem.style.display = 'flex';
+        } else {
+            editLocItem.style.display = 'none';
+        }
+
+        // Position context menu
+        const containerRect = canvasContainer.getBoundingClientRect();
+        const menuX = e.evt.clientX;
+        const menuY = e.evt.clientY;
+
+        contextMenu.style.top = menuY + 'px';
+        contextMenu.style.left = menuX + 'px';
+        contextMenu.classList.add('show');
+    });
+
+    // Close menu on clicks outside
+    window.addEventListener('click', () => {
+        contextMenu.classList.remove('show');
+    });
+
+    // Rotate context commands
+    document.getElementById('ctx-rotate-cw').addEventListener('click', () => {
+        if (!selectedNode) return;
+        
+        if (selectedNode.getAttr('parentType') === 'door') {
+            const currentFlipped = selectedNode.getAttr('isFlippedY') || false;
+            selectedNode.setAttr('isFlippedY', !currentFlipped);
+            updateDoorGraphics(selectedNode);
+            mainLayer.batchDraw();
+            showToast('Đã lật trong/ngoài', 'success');
+        } else {
+            const currentRot = selectedNode.rotation();
+            const newRot = (currentRot + 180) % 360;
+            selectedNode.rotation(newRot);
+            mainLayer.batchDraw();
+            updateSiteOuterBoundary();
+            showToast('Đã xoay 180°', 'success');
+        }
+    });
+
+    document.getElementById('ctx-rotate-ccw').addEventListener('click', () => {
+        if (!selectedNode) return;
+        
+        if (selectedNode.getAttr('parentType') === 'door') {
+            const currentFlipped = selectedNode.getAttr('isFlippedX') || false;
+            selectedNode.setAttr('isFlippedX', !currentFlipped);
+            updateDoorGraphics(selectedNode);
+            mainLayer.batchDraw();
+            showToast('Đã lật trái/phải', 'success');
+        } else {
+            const currentRot = selectedNode.rotation();
+            const newRot = (currentRot - 180 + 360) % 360;
+            selectedNode.rotation(newRot);
+            mainLayer.batchDraw();
+            updateSiteOuterBoundary();
+            showToast('Đã xoay -180°', 'success');
+        }
+    });
+
+    document.getElementById('ctx-bring-front').addEventListener('click', () => {
+        if (!selectedNode) return;
+        selectedNode.moveToTop();
+        transformer.moveToTop();
+        mainLayer.batchDraw();
+        showToast('Đã đưa lên trên cùng', 'success');
+    });
+
+    document.getElementById('ctx-send-back').addEventListener('click', () => {
+        if (!selectedNode) return;
+        selectedNode.moveToBottom();
+        // Keep transformer above
+        transformer.moveToTop();
+        mainLayer.batchDraw();
+        showToast('Đã đưa xuống dưới cùng', 'success');
+    });
+
+    document.getElementById('ctx-edit-layout').addEventListener('click', () => {
+        if (!selectedNode) return;
+        const type = selectedNode.getAttr('objectType');
+        const id = selectedNode.getAttr('objectId');
+        if (type === 'location') {
+            window.open(`/dcim/locations/${id}/visualization/`, '_blank');
+        }
+    });
+
+    document.getElementById('ctx-remove').addEventListener('click', () => {
+        if (!selectedNode) return;
+        removeNodeFromCanvas(selectedNode);
+    });
+
+    // ===== SAVE LAYOUT FUNCTION =====
+    async function saveLayout() {
+        showLoading();
+        deselectAll();
+
+        const objects = [];
+        const canvasObjects = mainLayer.find('.layout-object');
+
+        canvasObjects.forEach((group, index) => {
+            objects.push({
+                object_type: group.getAttr('objectType'),
+                object_id: parseInt(group.getAttr('objectId'), 10),
+                x: parseFloat(group.x().toFixed(2)),
+                y: parseFloat(group.y().toFixed(2)),
+                rotation: parseFloat(group.rotation().toFixed(2)),
+                z_index: index,
+                width: group.getAttr('parentType') === 'door' && group.getAttr('isFlippedX') 
+                    ? -parseFloat(group.width().toFixed(2)) 
+                    : parseFloat(group.width().toFixed(2)),
+                height: group.getAttr('parentType') === 'door' && group.getAttr('isFlippedY') 
+                    ? -parseFloat(group.height().toFixed(2)) 
+                    : parseFloat(group.height().toFixed(2)),
+                parent_type: group.getAttr('parentType') || null,
+                parent_id: group.getAttr('parentId') || null,
+            });
+        });
+
+        try {
+            const resp = await fetch(`${API_BASE}/site-layout/save/`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': getCsrfToken(),
+                },
+                body: JSON.stringify({
+                    site_id: SITE_ID,
+                    objects: objects,
+                }),
+            });
+
+            if (!resp.ok) throw new Error('Failed to save layout');
+            const result = await resp.json();
+
+            hideLoading();
+            showToast('Đã lưu sơ đồ mặt bằng thành công!', 'success');
+            // Refresh sidebar list states
+            loadSiteLayout();
+        } catch (err) {
+            console.error('Error saving site layout:', err);
+            hideLoading();
+            showToast('Lỗi khi lưu sơ đồ mặt bằng', 'error');
+        }
+    }
+
+    // ===== SIDEBAR TOGGLE COLLAPSE =====
+    const sidebar = document.querySelector('.sv-sidebar');
+    const toggleBtn = document.getElementById('sv-sidebar-toggle');
+
+    function handleResize() {
+        stageWidth = canvasContainer.clientWidth;
+        stageHeight = canvasContainer.clientHeight;
+        stage.width(stageWidth);
+        stage.height(stageHeight);
+        drawGrid();
+    }
+
+    toggleBtn.addEventListener('click', () => {
+        sidebar.classList.toggle('collapsed');
+        if (sidebar.classList.contains('collapsed')) {
+            toggleBtn.innerHTML = '▶';
+            toggleBtn.setAttribute('title', 'Mở rộng sidebar');
+        } else {
+            toggleBtn.innerHTML = '◀';
+            toggleBtn.setAttribute('title', 'Thu nhỏ sidebar');
+        }
+        setTimeout(handleResize, 220);
+    });
+
+    // ===== INIT =====
+    drawGrid();
+    loadSiteLayout();
+
+}) ();
+</script>
+{% endblock %}

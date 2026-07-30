@@ -1,0 +1,137 @@
+{% extends 'generic/object.html' %}
+{% load helpers %}
+{% load plugins %}
+{% load static %}
+
+{% block content %}
+  <div class="row">
+    <div class="col col-md-6">
+      <div class="card">
+        <h5 class="card-header">Thông tin chung</h5>
+        <div class="card-body">
+          <table class="table table-hover attr-table">
+            <tr>
+              <th scope="row">Tên</th>
+              <td>{{ object.name }}</td>
+            </tr>
+            <tr>
+              <th scope="row">Mã</th>
+              <td>{{ object.code }}</td>
+            </tr>
+            <tr>
+              <th scope="row">Trạng thái</th>
+              <td>{% badge object.get_status_display bg_color=object.get_status_color %}</td>
+            </tr>
+            <tr>
+              <th scope="row">Loại thiết bị</th>
+              <td>{{ object.device_type }}</td>
+            </tr>
+            <tr>
+              <th scope="row">Model</th>
+              <td>{{ object.model|default:"-" }}</td>
+            </tr>
+            <tr>
+              <th scope="row">Số serial</th>
+              <td>{{ object.serial|default:"-" }}</td>
+            </tr>
+            <tr>
+              <th scope="row">Hãng sản xuất</th>
+              <td>{{ object.manufacturer|default:"-" }}</td>
+            </tr>
+            {% if object.asset_group %}
+            <tr>
+              <th scope="row">Nhóm tài sản</th>
+              <td>
+                <a href="{{ object.asset_group.get_absolute_url }}">{{ object.asset_group }}</a>
+              </td>
+            </tr>
+            {% endif %}
+          </table>
+        </div>
+      </div>
+      
+      <div class="card">
+        <h5 class="card-header">Mô tả</h5>
+        <div class="card-body">
+          {{ object.description|default:"Chưa có mô tả" }}
+        </div>
+      </div>
+
+      {% include 'inc/panels/custom_fields.html' %}
+    </div>
+
+    <div class="col col-md-6">
+      <div class="card">
+        <h5 class="card-header">Thông tin Vị trí & Vận hành</h5>
+        <div class="card-body">
+          <table class="table table-hover attr-table">
+            <tr>
+              <th scope="row">Region</th>
+              <td>{{ object.region|default:"-" }}</td>
+            </tr>
+            <tr>
+              <th scope="row">Site</th>
+              <td>{{ object.site|default:"-" }}</td>
+            </tr>
+            <tr>
+              <th scope="row">Location</th>
+              <td>{{ object.location|default:"-" }}</td>
+            </tr>
+            <tr>
+              <th scope="row">Rack</th>
+              <td>
+                {% if object.rack %}
+                  <a href="{{ object.rack.get_absolute_url }}">{{ object.rack }}</a>
+                  {% if object.rack_face %}
+                    ({{ object.get_rack_face_display }})
+                  {% endif %}
+                {% else %}
+                  -
+                {% endif %}
+              </td>
+            </tr>
+            <tr>
+              <th scope="row">Ngày lắp đặt</th>
+              <td>{{ object.installation_date|default:"-" }}</td>
+            </tr>
+            <tr>
+              <th scope="row">Ngày mua</th>
+              <td>{{ object.purchase_date|default:"-" }}</td>
+            </tr>
+            <tr>
+              <th scope="row">Thời hạn bảo hành (tháng)</th>
+              <td>{{ object.warranty_period|default:"-" }}</td>
+            </tr>
+            <tr>
+              <th scope="row">Thời gian bảo hành</th>
+              <td>{{ object.warranty_end|default:"-" }}</td>
+            </tr>
+          </table>
+        </div>
+      </div>
+      
+      <div class="card">
+        <h5 class="card-header">Tài liệu đính kèm</h5>
+        <div class="card-body">
+          {% if uploaded_files %}
+            <div class="attachment-list d-flex gap-3 flex-wrap">
+              {% for file in uploaded_files %}
+                <div class="attachment-item border rounded p-2 text-center" style="width: 120px; background: #fafbfc; position: relative;">
+                  <span class="icon fs-2">📄</span>
+                  <div class="filename text-truncate mt-1" style="font-size: 13px;">
+                    <a href="/media/{{ file.file }}" target="_blank" class="download-link" title="{{ file.file_name }}">{{ file.file_name }}</a>
+                  </div>
+                  <div class="filesize text-muted" style="font-size: 11px;">{{ file.file.size|filesizeformat }}</div>
+                  <div class="created text-black-50" style="font-size: 10px;">{{ file.created_at|date:'d/m/Y H:i' }}</div>
+                </div>
+              {% endfor %}
+            </div>
+          {% else %}
+            <span class="text-muted">Không có file đính kèm.</span>
+          {% endif %}
+        </div>
+      </div>
+
+    </div>
+  </div>
+{% endblock %}

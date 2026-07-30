@@ -1,0 +1,122 @@
+{% extends 'generic/object.html' %}
+{% load helpers %}
+{% load plugins %}
+{% load static %}
+
+{% block content %}
+  <div class="row">
+    <div class="col col-md-6">
+      <div class="card">
+        <h5 class="card-header">Thông tin chung</h5>
+        <div class="card-body">
+          <table class="table table-hover attr-table">
+            <tr>
+              <th scope="row">Tên</th>
+              <td>{{ object.name }}</td>
+            </tr>
+            <tr>
+              <th scope="row">Mã tài sản</th>
+              <td>{{ object.asset_code }}</td>
+            </tr>
+            <tr>
+              <th scope="row">Nhóm tài sản</th>
+              <td>
+                {% if object.asset_group %}
+                  <a href="{{ object.asset_group.get_absolute_url }}">{{ object.asset_group }}</a>
+                {% else %}
+                  -
+                {% endif %}
+              </td>
+            </tr>
+            <tr>
+              <th scope="row">Trạng thái</th>
+              <td>{% badge object.get_status_display bg_color=object.get_status_color %}</td>
+            </tr>
+            <tr>
+              <th scope="row">Loại thiết bị</th>
+              <td>{{ object.device_type|default:"-" }}</td>
+            </tr>
+            <tr>
+              <th scope="row">Model</th>
+              <td>{{ object.model|default:"-" }}</td>
+            </tr>
+            <tr>
+              <th scope="row">Serial Number</th>
+              <td>{{ object.serial_number|default:"-" }}</td>
+            </tr>
+          </table>
+        </div>
+      </div>
+      
+      {% include 'inc/panels/custom_fields.html' %}
+    </div>
+
+    <div class="col col-md-6">
+      <div class="card">
+        <h5 class="card-header">Thông tin Vị trí & Vận hành</h5>
+        <div class="card-body">
+          <table class="table table-hover attr-table">
+            <tr>
+              <th scope="row">Region</th>
+              <td>{{ object.region|default:"-" }}</td>
+            </tr>
+            <tr>
+              <th scope="row">Site</th>
+              <td>{{ object.site|default:"-" }}</td>
+            </tr>
+            <tr>
+              <th scope="row">Location</th>
+              <td>{{ object.location|default:"-" }}</td>
+            </tr>
+            <tr>
+              <th scope="row">Nhà sản xuất</th>
+              <td>{{ object.manufacturer|default:"-" }}</td>
+            </tr>
+            <tr>
+              <th scope="row">Ngày lắp đặt</th>
+              <td>{{ object.installation_date|default:"-" }}</td>
+            </tr>
+            <tr>
+              <th scope="row">Ngày mua</th>
+              <td>{{ object.purchase_date|default:"-" }}</td>
+            </tr>
+            <tr>
+              <th scope="row">Bảo hành (tháng)</th>
+              <td>{{ object.warranty_period|default:"-" }}</td>
+            </tr>
+          </table>
+        </div>
+      </div>
+      
+      <div class="card">
+        <h5 class="card-header">Mô tả</h5>
+        <div class="card-body">
+          {{ object.description|default:"Chưa có mô tả" }}
+        </div>
+      </div>
+
+      <div class="card">
+        <h5 class="card-header">Tài liệu đính kèm</h5>
+        <div class="card-body">
+          {% if uploaded_files %}
+            <div class="attachment-list">
+              {% for file in uploaded_files %}
+                <div class="attachment-item">
+                  <span class="icon">📄</span>
+                  <div class="filename">
+                    <a href="/media/{{ file.file }}" target="_blank" class="download-link">{{ file.file_name }}</a>
+                  </div>
+                  <div class="filesize">{{ file.file.size|filesizeformat }}</div>
+                  <div class="created">{{ file.created_at|date:'d/m/Y H:i' }}</div>
+                </div>
+              {% endfor %}
+            </div>
+          {% else %}
+            <span class="text-muted">Không có file đính kèm.</span>
+          {% endif %}
+        </div>
+      </div>
+
+    </div>
+  </div>
+{% endblock %}

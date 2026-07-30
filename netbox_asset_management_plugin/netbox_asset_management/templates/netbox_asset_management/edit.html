@@ -1,0 +1,35 @@
+{% extends 'generic/object_edit.html' %}
+{% load static %}
+
+{% block form %}
+  {{ block.super }}
+  
+  {# Include the upload plugin template #}
+  <div class="field-group mb-5">
+    <div class="row mb-2">
+      <h5 class="offset-sm-3">File đính kèm</h5>
+    </div>
+    <div class="row">
+      <div class="col-sm-9 offset-sm-3">
+        <style>
+          .attachment-list { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 10px; padding-bottom: 10px; width: 100%; margin-left: 30px; }
+          .attachment-item { border: 1px solid #ddd; border-radius: 6px; padding: 8px; width: 120px; text-align: center; background: #fafbfc; position: relative; }
+          .attachment-item .delete-btn { position: absolute; top: 2px; right: 2px; background: none; border: none; color: #888; cursor: pointer; }
+          .attachment-item .icon { font-size: 32px; margin-bottom: 4px; }
+          .attachment-item .filename { font-size: 13px; word-break: break-all; }
+          .attachment-item .filesize { font-size: 11px; color: #888; }
+          .attachment-item .created { font-size: 10px; color: #aaa; }
+          .custom-upload-box { border: 2px dashed #bdbdbd; border-radius: 6px; padding: 0px 10px; text-align: center; cursor: pointer; color: #757575; background: #fafafa; transition: border-color 0.2s; margin-bottom: 16px; position: relative; width: 75%; margin-left: 25%; }
+          .custom-upload-box:hover { border-color: #1976d2; }
+          .upload-icon { font-size: 32px; display: block; margin-bottom: 8px; }
+          .upload-browse { color: #1976d2; text-decoration: underline; cursor: pointer; }
+        </style>
+        <script id="uploaded-files-data" type="application/json">"[]"</script>
+        {% include 'upload_file/upload.html' with object_id=object_id model_name=model_name session_key=session_key valid_flg=valid_flg type_file=type_file uploaded_files=uploaded_files %}
+      </div>
+    </div>
+  </div>
+
+  {% include 'netbox_asset_management/upload_file_inject.html' %}
+
+{% endblock %}

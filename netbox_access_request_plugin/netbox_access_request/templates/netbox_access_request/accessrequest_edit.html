@@ -1,0 +1,22 @@
+{% extends 'generic/object_edit.html' %}
+{% load static %}
+
+{% block form %}
+  {{ block.super }}
+  <script>
+    document.addEventListener("DOMContentLoaded", function() {
+      const cancelBtns = document.querySelectorAll('button[name="_cancel"], a.btn-outline-secondary, a.btn-secondary, button.btn-outline-secondary, button.btn-secondary');
+      cancelBtns.forEach(btn => {
+        const text = btn.textContent.trim().toLowerCase();
+        if (text.includes('cancel') || text.includes('hủy') || text.includes('quay lại')) {
+          btn.addEventListener('click', function(e) {
+            if (!confirm('Bạn có chắc chắn muốn hủy lưu thông tin không?')) {
+              e.preventDefault();
+              e.stopPropagation();
+            }
+          });
+        }
+      });
+    });
+  </script>
+{% endblock %}
