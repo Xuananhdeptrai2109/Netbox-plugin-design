@@ -135,6 +135,33 @@ services:
     volumes:
       - netbox-redis-cache-data:/data # Volume lưu trữ dữ liệu cache của Redis
 
+  # Dịch vụ NetBox Zabbix Hybrid Sync
+  netbox-zabbix-sync:
+    build:
+      context: ../netbox_zabbix_sync
+      dockerfile: Dockerfile
+    container_name: netbox-zabbix-sync
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    env_file:
+      - ../netbox_zabbix_sync/.env
+    depends_on:
+      - netbox
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  # Dịch vụ Zabbix Appliance (Server + Web UI + DB gom trong 1 container duy nhất cho máy cá nhân)
+  zabbix-appliance:
+    image: zabbix/zabbix-appliance:latest
+    container_name: zabbix-appliance
+    restart: unless-stopped
+    ports:
+      - "8088:80"
+      - "10051:10051"
+
+
+
 # Định nghĩa các volumes cho các dịch vụ
 
 volumes:
