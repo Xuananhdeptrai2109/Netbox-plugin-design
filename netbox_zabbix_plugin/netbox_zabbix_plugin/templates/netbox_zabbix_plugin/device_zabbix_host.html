@@ -1,0 +1,337 @@
+{% extends 'generic/object.html' %}
+{% load form_helpers %}
+
+{% block content %}
+<div class="row">
+  <div class="col-md-12">
+    <form action="" method="post" class="form form-horizontal">
+      {% csrf_token %}
+      
+      <div class="card mb-4">
+        <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+          <h5 class="card-title m-0"><i class="mdi mdi-server-network"></i> Cấu hình Zabbix Host (Device: {{ object.name }})</h5>
+          <span class="badge bg-light text-dark">Mapped Group: NetBox/{{ device_role_name }}</span>
+        </div>
+        <div class="card-body">
+
+          <!-- Basic Host Fields -->
+          <div class="row mb-3">
+            <label class="col-sm-3 col-form-label text-end text-danger fw-bold">* Host name</label>
+            <div class="col-sm-9">
+              {{ form.host_name }}
+              {% if form.host_name.errors %}<div class="text-danger small">{{ form.host_name.errors }}</div>{% endif %}
+            </div>
+          </div>
+
+          <div class="row mb-3">
+            <label class="col-sm-3 col-form-label text-end">Visible name</label>
+            <div class="col-sm-9">
+              {{ form.visible_name }}
+            </div>
+          </div>
+
+          <div class="row mb-3">
+            <label class="col-sm-3 col-form-label text-end text-danger fw-bold">* Groups</label>
+            <div class="col-sm-9">
+              <div class="input-group mb-2">
+                <span class="input-group-text bg-secondary text-white"><i class="mdi mdi-tag"></i> NetBox/{{ device_role_name }}</span>
+              </div>
+              {{ form.custom_groups }}
+              <small class="form-text text-muted">Nhóm mặc định lấy từ Device Role của NetBox. Bạn có thể nhập thêm nhóm tùy chỉnh (cách nhau bởi dấu phẩy).</small>
+            </div>
+          </div>
+
+          <hr class="my-4">
+
+          <!-- Interfaces Section -->
+          <h5 class="mb-3 text-secondary"><i class="mdi mdi-ethernet"></i> Giao diện Giám sát (Interfaces)</h5>
+
+          <!-- 1. Agent Interfaces -->
+          <div class="card mb-3 border-info">
+            <div class="card-header bg-light fw-bold text-info"><i class="mdi mdi-monitor-dashboard"></i> Agent interfaces</div>
+            <div class="card-body">
+              <div class="row text-muted small fw-bold mb-1 align-items-center">
+                <div class="col-md-3">IP address</div>
+                <div class="col-md-3">DNS name</div>
+                <div class="col-md-3 text-center">Connect to</div>
+                <div class="col-md-1">Port</div>
+                <div class="col-md-1 text-center">Default</div>
+                <div class="col-md-1"></div>
+              </div>
+              <div id="agent-container">
+                {% for iface in agent_interfaces %}
+                  {% include 'netbox_zabbix_plugin/interface_row.html' with type='agent' port='10050' iface=iface idx=forloop.counter0 %}
+                {% empty %}
+                  {% include 'netbox_zabbix_plugin/interface_row.html' with type='agent' port='10050' idx=0 %}
+                {% endfor %}
+              </div>
+              <div class="mt-2">
+                <a href="javascript:void(0)" class="text-primary text-decoration-none small fw-bold" onclick="addInterfaceRow('agent', '10050')"><u>Add</u></a>
+              </div>
+            </div>
+          </div>
+
+          <!-- 2. SNMP Interfaces -->
+          <div class="card mb-3 border-warning">
+            <div class="card-header bg-light fw-bold text-warning"><i class="mdi mdi-router-wireless"></i> SNMP interfaces</div>
+            <div class="card-body">
+              <div class="row text-muted small fw-bold mb-1 align-items-center">
+                <div class="col-md-3">IP address</div>
+                <div class="col-md-3">DNS name</div>
+                <div class="col-md-3 text-center">Connect to</div>
+                <div class="col-md-1">Port</div>
+                <div class="col-md-1 text-center">Default</div>
+                <div class="col-md-1"></div>
+              </div>
+              <div id="snmp-container">
+                {% for iface in snmp_interfaces %}
+                  {% include 'netbox_zabbix_plugin/interface_row.html' with type='snmp' port='161' iface=iface idx=forloop.counter0 %}
+                {% endfor %}
+              </div>
+              <div class="mt-2">
+                <a href="javascript:void(0)" class="text-primary text-decoration-none small fw-bold" onclick="addInterfaceRow('snmp', '161')"><u>Add</u></a>
+              </div>
+            </div>
+          </div>
+
+          <!-- 3. JMX Interfaces -->
+          <div class="card mb-3 border-success">
+            <div class="card-header bg-light fw-bold text-success"><i class="mdi mdi-coffee"></i> JMX interfaces</div>
+            <div class="card-body">
+              <div class="row text-muted small fw-bold mb-1 align-items-center">
+                <div class="col-md-3">IP address</div>
+                <div class="col-md-3">DNS name</div>
+                <div class="col-md-3 text-center">Connect to</div>
+                <div class="col-md-1">Port</div>
+                <div class="col-md-1 text-center">Default</div>
+                <div class="col-md-1"></div>
+              </div>
+              <div id="jmx-container">
+                {% for iface in jmx_interfaces %}
+                  {% include 'netbox_zabbix_plugin/interface_row.html' with type='jmx' port='12345' iface=iface idx=forloop.counter0 %}
+                {% endfor %}
+              </div>
+              <div class="mt-2">
+                <a href="javascript:void(0)" class="text-primary text-decoration-none small fw-bold" onclick="addInterfaceRow('jmx', '12345')"><u>Add</u></a>
+              </div>
+            </div>
+          </div>
+
+          <!-- 4. IPMI Interfaces -->
+          <div class="card mb-3 border-secondary">
+            <div class="card-header bg-light fw-bold text-secondary"><i class="mdi mdi-chip"></i> IPMI interfaces</div>
+            <div class="card-body">
+              <div class="row text-muted small fw-bold mb-1 align-items-center">
+                <div class="col-md-3">IP address</div>
+                <div class="col-md-3">DNS name</div>
+                <div class="col-md-3 text-center">Connect to</div>
+                <div class="col-md-1">Port</div>
+                <div class="col-md-1 text-center">Default</div>
+                <div class="col-md-1"></div>
+              </div>
+              <div id="ipmi-container">
+                {% for iface in ipmi_interfaces %}
+                  {% include 'netbox_zabbix_plugin/interface_row.html' with type='ipmi' port='623' iface=iface idx=forloop.counter0 %}
+                {% endfor %}
+              </div>
+              <div class="mt-2">
+                <a href="javascript:void(0)" class="text-primary text-decoration-none small fw-bold" onclick="addInterfaceRow('ipmi', '623')"><u>Add</u></a>
+              </div>
+            </div>
+          </div>
+
+          <hr class="my-4">
+
+          <!-- Templates & Description -->
+          <div class="row mb-3">
+            <label class="col-sm-3 col-form-label text-end">Templates</label>
+            <div class="col-sm-9">
+              {{ form.templates }}
+              <small class="form-text text-muted">Nhập tên các Zabbix Template áp dụng cho Host (cách nhau bởi dấu phẩy).</small>
+            </div>
+          </div>
+
+          <div class="row mb-3">
+            <label class="col-sm-3 col-form-label text-end">Description</label>
+            <div class="col-sm-9">
+              {{ form.description }}
+            </div>
+          </div>
+
+          <div class="row mb-3">
+            <label class="col-sm-3 col-form-label text-end">Monitored by proxy</label>
+            <div class="col-sm-9">
+              {{ form.proxy_hostid }}
+            </div>
+          </div>
+
+          <div class="row mb-3">
+            <label class="col-sm-3 col-form-label text-end">Enabled</label>
+            <div class="col-sm-9 d-flex align-items-center">
+              <div class="form-check form-switch">
+                {{ form.enabled }}
+                <label class="form-check-label ms-2 fw-bold text-success">Kích hoạt giám sát Zabbix</label>
+              </div>
+            </div>
+          </div>
+
+        </div>
+        <div class="card-footer text-end">
+          <button type="submit" class="btn btn-primary"><i class="mdi mdi-content-save"></i> Update & Sync Zabbix</button>
+          <a href="{% url 'dcim:device' pk=object.pk %}" class="btn btn-outline-secondary">Cancel</a>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+  let rowCounters = { agent: 100, snmp: 100, jmx: 100, ipmi: 100 };
+
+  function validateDNSName(dns) {
+    if (!dns || dns.trim() === '') return { valid: false, reason: 'empty' };
+    dns = dns.trim();
+    if (dns.startsWith('http://') || dns.startsWith('https://') || dns.includes('/') || dns.includes(':') || dns.includes(' ')) {
+      return { valid: false, reason: 'format' };
+    }
+    const dnsRegex = /^([a-zA-Z0-9_]|[a-zA-Z0-9_][a-zA-Z0-9_\-]{0,61}[a-zA-Z0-9_])(\.([a-zA-Z0-9_]|[a-zA-Z0-9_][a-zA-Z0-9_\-]{0,61}[a-zA-Z0-9_]))*$/;
+    if (!dnsRegex.test(dns)) {
+      return { valid: false, reason: 'format' };
+    }
+    return { valid: true };
+  }
+
+  function validateRowDNS(dnsInput) {
+    const row = dnsInput.closest('.interface-row');
+    if (!row) return;
+    const connInput = row.querySelector('input[name*="_connect_to[]"]');
+    if (connInput && connInput.value === 'dns') {
+      const res = validateDNSName(dnsInput.value);
+      const feedback = row.querySelector('.invalid-feedback');
+      if (!res.valid) {
+        dnsInput.classList.add('is-invalid');
+        dnsInput.classList.remove('is-valid');
+        if (feedback) {
+          feedback.textContent = (res.reason === 'empty') 
+            ? '⚠️ Bắt buộc phải nhập Tên DNS khi chọn kết nối qua DNS!' 
+            : '⚠️ Tên DNS không hợp lệ! Vui lòng chỉ nhập Hostname/FQDN (ví dụ: server01.company.local).';
+        }
+      } else {
+        dnsInput.classList.remove('is-invalid');
+        dnsInput.classList.add('is-valid');
+      }
+    } else {
+      dnsInput.classList.remove('is-invalid');
+      dnsInput.classList.remove('is-valid');
+    }
+  }
+
+  function setConnectTo(type, uniqueId, val, radioElem) {
+    const connInput = document.getElementById(type + '_conn_input_' + uniqueId);
+    if (connInput) {
+      connInput.value = val;
+    }
+
+    const row = radioElem ? radioElem.closest('.interface-row') : (connInput ? connInput.closest('.interface-row') : null);
+    if (row) {
+      const dnsInput = row.querySelector(`input[name="${type}_dns[]"]`);
+      if (dnsInput) {
+        if (val === 'dns') {
+          validateRowDNS(dnsInput);
+          if (dnsInput.classList.contains('is-invalid')) {
+            dnsInput.focus();
+          }
+        } else {
+          dnsInput.classList.remove('is-invalid');
+          dnsInput.classList.remove('is-valid');
+        }
+      }
+    }
+  }
+
+  function addInterfaceRow(type, defaultPort) {
+    rowCounters[type]++;
+    const uid = type + '_' + Date.now() + '_' + rowCounters[type];
+    const container = document.getElementById(type + '-container');
+    const placeholderIp = (type === 'agent') ? '{{ default_ip|default:"127.0.0.1" }}' : '127.0.0.1';
+
+    const rowDiv = document.createElement('div');
+    rowDiv.className = 'row align-items-center mb-2 interface-row';
+    rowDiv.innerHTML = `
+      <div class="col-md-3">
+        <input type="text" name="${type}_ip[]" value="" class="form-control form-control-sm" placeholder="${placeholderIp}">
+      </div>
+      <div class="col-md-3">
+        <input type="text" name="${type}_dns[]" value="" class="form-control form-control-sm" placeholder="server01.company.local" oninput="validateRowDNS(this)">
+        <div class="invalid-feedback small fw-bold">Tên DNS không hợp lệ! (ví dụ: server01.company.local)</div>
+      </div>
+      <div class="col-md-3 text-center">
+        <input type="hidden" name="${type}_connect_to[]" id="${type}_conn_input_${uid}" value="ip">
+        <div class="btn-group btn-group-sm" role="group">
+          <input type="radio" class="btn-check" name="${type}_conn_toggle_${uid}" id="${type}_ip_${uid}" value="ip" checked onchange="setConnectTo('${type}', '${uid}', 'ip', this)">
+          <label class="btn btn-outline-secondary" for="${type}_ip_${uid}">IP</label>
+          <input type="radio" class="btn-check" name="${type}_conn_toggle_${uid}" id="${type}_dns_${uid}" value="dns" onchange="setConnectTo('${type}', '${uid}', 'dns', this)">
+          <label class="btn btn-outline-secondary" for="${type}_dns_${uid}">DNS</label>
+        </div>
+      </div>
+      <div class="col-md-1">
+        <input type="text" name="${type}_port[]" value="${defaultPort}" class="form-control form-control-sm">
+      </div>
+      <div class="col-md-1 text-center">
+        <input type="radio" name="${type}_default_idx" value="${container.children.length}" class="form-check-input">
+      </div>
+      <div class="col-md-1">
+        <button type="button" class="btn btn-link btn-sm text-primary text-decoration-none p-0" onclick="removeInterfaceRow(this)">Remove</button>
+      </div>
+    `;
+    container.appendChild(rowDiv);
+  }
+
+  function removeInterfaceRow(btn) {
+    const row = btn.closest('.interface-row');
+    if (row) {
+      row.remove();
+    }
+  }
+
+  document.addEventListener('DOMContentLoaded', function() {
+    const mainForm = document.querySelector('form');
+    if (mainForm) {
+      mainForm.addEventListener('submit', function(e) {
+        let hasError = false;
+        let firstErrorElem = null;
+
+        const rows = document.querySelectorAll('.interface-row');
+        rows.forEach(row => {
+          const connInput = row.querySelector('input[name*="_connect_to[]"]');
+          const dnsInput = row.querySelector('input[name*="_dns[]"]');
+          if (connInput && dnsInput && connInput.value === 'dns') {
+            const res = validateDNSName(dnsInput.value);
+            if (!res.valid) {
+              hasError = true;
+              dnsInput.classList.add('is-invalid');
+              const feedback = row.querySelector('.invalid-feedback');
+              if (feedback) {
+                feedback.textContent = (res.reason === 'empty') 
+                  ? '⚠️ Bắt buộc phải nhập Tên DNS khi chọn kết nối qua DNS!' 
+                  : '⚠️ Tên DNS không hợp lệ! Vui lòng chỉ nhập Hostname/FQDN (ví dụ: server01.company.local).';
+              }
+              if (!firstErrorElem) {
+                firstErrorElem = dnsInput;
+              }
+            }
+          }
+        });
+
+        if (hasError) {
+          e.preventDefault();
+          alert('❌ Có giao diện đang chọn kết nối bằng DNS nhưng Tên DNS rỗng hoặc không hợp lệ. Vui lòng kiểm tra lại!');
+          if (firstErrorElem) {
+            firstErrorElem.focus();
+          }
+        }
+      });
+    }
+  });
+</script>
+{% endblock %}

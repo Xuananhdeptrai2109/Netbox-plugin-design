@@ -31,55 +31,108 @@ class SyncEngine:
             logger.warning("Bỏ qua Device không có Tên (Name).")
             return False
 
+        zabbix_config = device_data.get("zabbix_config") or {}
         custom_fields = device_data.get("custom_fields", {}) or {}
-        zabbix_monitored = custom_fields.get("zabbix_monitored")
+
+        # 1. Xác định trạng thái Enable / Delete
+        enabled = zabbix_config.get("enabled", True) if zabbix_config else True
+        zabbix_monitored = custom_fields.get("zabbix_monitored", True)
         if zabbix_monitored is None:
             zabbix_monitored = True
 
-        template_override = custom_fields.get("zabbix_template_override")
-
-        # Kiểm tra sự kiện bị xóa hoặc bị hủy chọn (zabbix_monitored == False)
-        if event_type == "deleted" or zabbix_monitored is False:
-            logger.info(f"Device '{device_name}' (Event: {event_type}, Monitored: {zabbix_monitored}). Xử lý hủy giám sát theo Option A.")
+        if event_type == "deleted" or zabbix_monitored is False or enabled is False:
+            logger.info(f"Device '{device_name}' (Event: {event_type}, Monitored: {zabbix_monitored}, Enabled: {enabled}). Xử lý hủy/tắt giám sát.")
             if settings.ZABBIX_DELETE_POLICY == "delete":
                 return self.zbx_client.delete_host(device_name)
             else:
                 return self.zbx_client.disable_host(device_name)
 
-        # Lấy địa chỉ IP
-        ip_address = self._extract_ip(device_data.get("primary_ip"))
-        if not ip_address:
-            logger.warning(f"Device '{device_name}' được đánh dấu zabbix_monitored=True nhưng chưa có Primary IP. Sẽ disable host.")
-            return self.zbx_client.disable_host(device_name)
+        host_name = zabbix_config.get("host_name") or device_name
+        visible_name = zabbix_config.get("visible_name") or host_name
+        description = zabbix_config.get("description", "")
+        proxy_hostid = zabbix_config.get("proxy_hostid", "")
 
-        # Xác định Host Group
-        group_name = settings.DEFAULT_ZABBIX_GROUP
-        site = device_data.get("site")
-        if isinstance(site, dict) and site.get("name"):
-            group_name = f"NetBox/{site['name']}"
-        group_id = self.zbx_client.get_or_create_hostgroup(group_name)
-        if not group_id:
-            logger.error(f"Không thể lấy hoặc tạo Host Group '{group_name}' cho device '{device_name}'.")
+        # 2. Tự động xác định Host Group từ NetBox Device Role
+        group_names = []
+        role_obj = device_data.get("device_role") or device_data.get("role")
+        if isinstance(role_obj, dict) and role_obj.get("name"):
+            role_name = role_obj["name"]
+            group_names.append(f"NetBox/{role_name}")
+
+        # Thêm Custom Groups nếu có
+        custom_groups = zabbix_config.get("custom_groups", []) if zabbix_config else []
+        for cg in custom_groups:
+            if cg and cg not in group_names:
+                group_names.append(cg)
+
+        if not group_names:
+            group_names.append(settings.DEFAULT_ZABBIX_GROUP)
+
+        # Lấy/tạo Group IDs trên Zabbix
+        group_ids = []
+        for gname in group_names:
+            gid = self.zbx_client.get_or_create_hostgroup(gname)
+            if gid:
+                group_ids.append(gid)
+
+        if not group_ids:
+            logger.error(f"Không thể lấy hoặc tạo Host Group cho device '{device_name}'.")
             return False
 
-        # Xác định Templates (Tùy chỉnh override hoặc mặc định)
-        template_names = []
-        if template_override and isinstance(template_override, str) and template_override.strip():
-            template_names = [t.strip() for t in template_override.split(",") if t.strip()]
-        else:
-            template_names = [settings.DEFAULT_ZABBIX_TEMPLATE]
+        # 3. Xác định Templates
+        template_names = zabbix_config.get("templates", []) if zabbix_config else []
+        if not template_names:
+            template_override = custom_fields.get("zabbix_template_override")
+            if template_override and isinstance(template_override, str) and template_override.strip():
+                template_names = [t.strip() for t in template_override.split(",") if t.strip()]
+            else:
+                template_names = [settings.DEFAULT_ZABBIX_TEMPLATE]
 
         template_ids = self.zbx_client.get_template_ids(template_names)
-        if not template_ids:
-            logger.warning(f"Không tìm thấy Template ID tương ứng cho device '{device_name}' ({template_names}).")
 
-        # Cấu hình Host active/monitored
+        # 4. Xây dựng danh sách 4 loại Interfaces (Agent, SNMP, IPMI, JMX)
+        zbx_interfaces = []
+        raw_interfaces = zabbix_config.get("interfaces", []) if zabbix_config else []
+
+        if raw_interfaces:
+            for iface in raw_interfaces:
+                itype = int(iface.get("interface_type", 1))
+                zbx_interfaces.append({
+                    "type": itype,
+                    "main": 1 if iface.get("is_default", True) else 0,
+                    "useip": 1 if iface.get("use_ip", True) else 0,
+                    "ip": iface.get("ip_address", ""),
+                    "dns": iface.get("dns_name", ""),
+                    "port": str(iface.get("port", "10050")),
+                    "details": iface.get("details", {})
+                })
+        else:
+            # Fallback lấy Primary IP từ NetBox
+            primary_ip = self._extract_ip(device_data.get("primary_ip"))
+            if primary_ip:
+                zbx_interfaces.append({
+                    "type": 1,  # Agent
+                    "main": 1,
+                    "useip": 1,
+                    "ip": primary_ip,
+                    "dns": "",
+                    "port": "10050"
+                })
+
+        if not zbx_interfaces:
+            logger.warning(f"Device '{device_name}' chưa có giao diện giám sát khả dụng. Sẽ disable host.")
+            return self.zbx_client.disable_host(host_name)
+
+        # 5. Kích hoạt tạo/cập nhật Host trên Zabbix Server
         return self.zbx_client.create_or_update_host(
-            host_name=device_name,
-            ip_address=ip_address,
-            group_id=group_id,
+            host_name=host_name,
+            group_ids=group_ids,
             template_ids=template_ids,
-            enabled=True
+            interfaces=zbx_interfaces,
+            visible_name=visible_name,
+            description=description,
+            proxy_hostid=proxy_hostid,
+            enabled=enabled
         )
 
     def run_full_sync(self) -> SyncResult:

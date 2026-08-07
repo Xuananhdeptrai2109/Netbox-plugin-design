@@ -1,0 +1,27 @@
+<div class="row align-items-center mb-2 interface-row">
+  <div class="col-md-3">
+    <input type="text" name="{{ type }}_ip[]" value="{{ iface.ip_address|default:'' }}" class="form-control form-control-sm" placeholder="{% if type == 'agent' %}{{ default_ip|default:'127.0.0.1' }}{% else %}127.0.0.1{% endif %}">
+  </div>
+  <div class="col-md-3">
+    <input type="text" name="{{ type }}_dns[]" value="{{ iface.dns_name|default:'' }}" class="form-control form-control-sm" placeholder="server01.company.local" oninput="validateRowDNS(this)">
+    <div class="invalid-feedback small fw-bold">Tên DNS không hợp lệ! (ví dụ: server01.company.local)</div>
+  </div>
+  <div class="col-md-3 text-center">
+    <input type="hidden" name="{{ type }}_connect_to[]" id="{{ type }}_conn_input_{{ type }}_{{ idx }}" value="{% if iface.use_ip == False %}dns{% else %}ip{% endif %}">
+    <div class="btn-group btn-group-sm" role="group">
+      <input type="radio" class="btn-check" name="{{ type }}_conn_toggle_{{ idx }}" id="{{ type }}_ip_{{ idx }}" value="ip" {% if iface.use_ip != False %}checked{% endif %} onchange="setConnectTo('{{ type }}', '{{ type }}_{{ idx }}', 'ip', this)">
+      <label class="btn btn-outline-secondary" for="{{ type }}_ip_{{ idx }}">IP</label>
+      <input type="radio" class="btn-check" name="{{ type }}_conn_toggle_{{ idx }}" id="{{ type }}_dns_{{ idx }}" value="dns" {% if iface.use_ip == False %}checked{% endif %} onchange="setConnectTo('{{ type }}', '{{ type }}_{{ idx }}', 'dns', this)">
+      <label class="btn btn-outline-secondary" for="{{ type }}_dns_{{ idx }}">DNS</label>
+    </div>
+  </div>
+  <div class="col-md-1">
+    <input type="text" name="{{ type }}_port[]" value="{{ iface.port|default:port }}" class="form-control form-control-sm">
+  </div>
+  <div class="col-md-1 text-center">
+    <input type="radio" name="{{ type }}_default_idx" value="{{ idx }}" class="form-check-input" {% if iface.is_default or idx == 0 %}checked{% endif %}>
+  </div>
+  <div class="col-md-1">
+    <button type="button" class="btn btn-link btn-sm text-primary text-decoration-none p-0" onclick="removeInterfaceRow(this)">Remove</button>
+  </div>
+</div>

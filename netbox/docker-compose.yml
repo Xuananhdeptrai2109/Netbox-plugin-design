@@ -46,6 +46,7 @@ services:
       - /d/docker-netbox/netbox_access_request_plugin/netbox_access_request:/opt/netbox/netbox/netbox_access_request:z
       - /d/docker-netbox/netbox_rack_layout_plugin/netbox_rack_layout:/opt/netbox/netbox/netbox_rack_layout:z
       - /d/docker-netbox/netbox_smart_lock_plugin/netbox_smart_lock:/opt/netbox/netbox/netbox_smart_lock:z
+      - /d/docker-netbox/netbox_zabbix_plugin/netbox_zabbix_plugin:/opt/netbox/netbox/netbox_zabbix_plugin:z
   netbox-worker:
     <<: *netbox # Kế thừa toàn bộ cấu hình từ anchor 'netbox'
 
@@ -159,6 +160,8 @@ services:
     ports:
       - "8088:80"
       - "10051:10051"
+    volumes:
+      - zabbix-db-data:/var/lib/mysql
 
 
 
@@ -182,3 +185,6 @@ volumes:
 
   netbox-scripts-files:
     driver: local # Sử dụng driver local để tạo volume lưu trữ các scripts của NetBox
+
+  zabbix-db-data:
+    driver: local # Volume lưu trữ dữ liệu CSDL MySQL của Zabbix Appliance

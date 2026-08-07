@@ -88,40 +88,73 @@ class ZabbixClient:
     def create_or_update_host(
         self,
         host_name: str,
-        ip_address: str,
-        group_id: str,
+        group_ids: List[str],
         template_ids: List[str],
+        interfaces: Optional[List[Dict[str, Any]]] = None,
+        ip_address: Optional[str] = None,
+        visible_name: Optional[str] = None,
+        description: Optional[str] = None,
+        proxy_hostid: Optional[str] = None,
         enabled: bool = True
     ) -> bool:
-        """Tạo mới hoặc cập nhật Zabbix Host"""
+        """Tạo mới hoặc cập nhật Zabbix Host với đầy đủ cấu hình interfaces"""
         if not self.zapi and not self.connect():
             return False
 
         status = 0 if enabled else 1  # 0: Monitored, 1: Unmonitored/Disabled
         existing_host = self.get_host_by_name(host_name)
 
-        interfaces = [{
-            "type": 1,  # 1: Agent, 2: SNMP
-            "main": 1,
-            "useip": 1,
-            "ip": ip_address,
-            "dns": "",
-            "port": "10050"
-        }]
+        # Xây dựng danh sách interfaces nếu chưa truyền vào
+        if not interfaces:
+            interfaces = [{
+                "type": 1,  # 1: Agent
+                "main": 1,
+                "useip": 1,
+                "ip": ip_address or "",
+                "dns": "",
+                "port": "10050"
+            }]
 
-        groups = [{"groupid": group_id}]
-        templates = [{"templateid": tid} for tid in template_ids]
+        groups = [{"groupid": gid} for gid in group_ids if gid]
+        templates = [{"templateid": tid} for tid in template_ids if tid]
+
+        params = {
+            "host": host_name,
+            "name": visible_name or host_name,
+            "status": status,
+            "groups": groups,
+            "templates": templates,
+            "interfaces": interfaces,
+        }
+        if description:
+            params["description"] = description
+        if proxy_hostid:
+            params["proxy_hostid"] = proxy_hostid
 
         try:
             if existing_host:
                 host_id = existing_host["hostid"]
-                # Cập nhật thông tin Host
+                existing_ifaces = list(existing_host.get("interfaces", []))
+
+                # Gán interfaceid của Zabbix vào danh sách interfaces mới để Zabbix API cập nhật tại chỗ (không bị xóa/tạo lại)
+                if interfaces:
+                    for iface in interfaces:
+                        itype = str(iface.get("type", 1))
+                        matched = [ex for ex in existing_ifaces if str(ex.get("type")) == itype]
+                        if matched:
+                            iface["interfaceid"] = matched[0]["interfaceid"]
+                            existing_ifaces.remove(matched[0])
+
                 update_params = {
                     "hostid": host_id,
+                    "name": visible_name or host_name,
                     "status": status,
                     "groups": groups,
-                    "templates": templates
+                    "templates": templates,
+                    "interfaces": interfaces,
                 }
+                if description is not None:
+                    update_params["description"] = description
                 self.zapi.host.update(update_params)
                 logger.info(f"Đã cập nhật Zabbix Host: '{host_name}' (ID: {host_id}, Status: {'Monitored' if enabled else 'Disabled'})")
                 return True
@@ -130,14 +163,7 @@ class ZabbixClient:
                     logger.info(f"Bỏ qua tạo Zabbix Host '{host_name}' vì status = disabled.")
                     return True
                 
-                # Tạo mới Host
-                created = self.zapi.host.create(
-                    host=host_name,
-                    status=status,
-                    interfaces=interfaces,
-                    groups=groups,
-                    templates=templates
-                )
+                created = self.zapi.host.create(**params)
                 logger.info(f"Đã tạo Zabbix Host mới thành công: '{host_name}' (ID: {created['hostids'][0]})")
                 return True
         except Exception as e:
