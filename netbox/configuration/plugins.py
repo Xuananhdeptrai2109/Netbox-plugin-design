@@ -5,6 +5,7 @@ PLUGINS = [
     'netbox_access_request',
     'netbox_rack_layout',
     'netbox_smart_lock',
+    'netbox_zabbix_plugin',
 ]
 
 # Cấu hình bổ sung (nếu có)
@@ -15,4 +16,5 @@ PLUGINS_CONFIG = {
     'netbox_access_request': {},
     'netbox_rack_layout': {},
     'netbox_smart_lock': {},
+    'netbox_zabbix_plugin': {},
 }

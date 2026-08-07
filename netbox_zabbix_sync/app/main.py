@@ -1,4 +1,5 @@
 import logging
+from datetime import datetime
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, BackgroundTasks, HTTPException, status
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -27,16 +28,17 @@ def scheduled_full_sync():
 async def lifespan(app: FastAPI):
     """Quản lý vòng đời FastAPI & APScheduler Background Job"""
     logger.info("Khởi động NetBox-Zabbix Hybrid Sync Service...")
-    # Thêm background job định kỳ cho Full Reconciliation Sync
+    # Thêm background job định kỳ cho Full Reconciliation Sync (chạy ngay lập tức khi khởi động + chạy lại mỗi SYNC_INTERVAL_MINUTES phút)
     scheduler.add_job(
         scheduled_full_sync,
         trigger="interval",
         minutes=settings.SYNC_INTERVAL_MINUTES,
+        next_run_time=datetime.now(),
         id="full_reconciliation_sync",
         replace_existing=True
     )
     scheduler.start()
-    logger.info(f"APScheduler đã được khởi động. Full Sync được lên lịch mỗi {settings.SYNC_INTERVAL_MINUTES} phút.")
+    logger.info(f"APScheduler đã được khởi động. Full Sync chạy ngay lập tức và lặp lại mỗi {settings.SYNC_INTERVAL_MINUTES} phút.")
 
     yield
 
