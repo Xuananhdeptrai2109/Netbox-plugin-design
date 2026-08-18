@@ -145,6 +145,8 @@ services:
     restart: unless-stopped
     ports:
       - "8000:8000"
+    volumes:
+      - ../netbox_zabbix_sync/app:/app/app
     env_file:
       - ../netbox_zabbix_sync/.env
     depends_on:
