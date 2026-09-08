@@ -53,3 +53,9 @@ class SyncResult(BaseModel):
     message: str
     processed_count: int = 0
     errors: List[str] = Field(default_factory=list)
+
+class AcknowledgeRequestSchema(BaseModel):
+    eventids: List[str]
+    message: Optional[str] = ""
+    action: int = 6
+

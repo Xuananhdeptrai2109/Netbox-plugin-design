@@ -5,7 +5,7 @@ class ZabbixHostConfigForm(forms.ModelForm):
     # Host basic settings
     host_name = forms.CharField(
         label='Host name',
-        required=True,
+        required=False,
         widget=forms.TextInput(attrs={'class': 'form-control'})
     )
     visible_name = forms.CharField(
@@ -45,10 +45,29 @@ class ZabbixHostConfigForm(forms.ModelForm):
         initial=True,
         widget=forms.CheckboxInput(attrs={'class': 'form-check-input'})
     )
+    inventory_mode = forms.ChoiceField(
+        label='Inventory mode',
+        required=False,
+        choices=(
+            ('disabled', 'Disabled'),
+            ('manual', 'Manual'),
+            ('automatic', 'Automatic'),
+        ),
+        initial='disabled',
+        widget=forms.Select(attrs={'class': 'form-select'})
+    )
+    host_macros_json = forms.CharField(
+        required=False,
+        widget=forms.HiddenInput()
+    )
+    custom_tags_json = forms.CharField(
+        required=False,
+        widget=forms.HiddenInput()
+    )
 
     class Meta:
         model = ZabbixHostConfig
         fields = [
             'host_name', 'visible_name', 'use_device_role_as_group', 'custom_groups',
-            'templates', 'description', 'proxy_hostid', 'enabled'
+            'templates', 'description', 'proxy_hostid', 'enabled', 'inventory_mode'
         ]

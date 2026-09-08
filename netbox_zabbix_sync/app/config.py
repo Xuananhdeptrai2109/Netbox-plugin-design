@@ -14,7 +14,7 @@ class Settings(BaseSettings):
     SYNC_INTERVAL_MINUTES: int = 15
 
     DEFAULT_ZABBIX_GROUP: str = "NetBox Discovered Devices"
-    DEFAULT_ZABBIX_TEMPLATE: str = "Linux by Zabbix agent"
+    DEFAULT_ZABBIX_TEMPLATE: str = "Template OS Linux by Zabbix agent"
 
     class Config:
         env_file = ".env"

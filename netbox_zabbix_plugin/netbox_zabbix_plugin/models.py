@@ -47,6 +47,26 @@ class ZabbixHostConfig(NetBoxModel):
         blank=True,
         help_text='Danh sách Zabbix Templates (ví dụ: ["Template OS Linux by Zabbix agent"])'
     )
+    host_macros = models.JSONField(
+        default=list,
+        blank=True,
+        help_text='Danh sách User Macros (ví dụ: [{"macro": "{$SNMP_COMMUNITY}", "value": "public", "type": "0", "description": ""}])'
+    )
+    inventory_mode = models.CharField(
+        max_length=20,
+        default='disabled',
+        choices=(
+            ('disabled', 'Disabled'),
+            ('manual', 'Manual'),
+            ('automatic', 'Automatic'),
+        ),
+        help_text='Chế độ quản lý Inventory'
+    )
+    custom_tags = models.JSONField(
+        default=list,
+        blank=True,
+        help_text='Danh sách Custom Host Tags (ví dụ: [{"tag": "env", "value": "prod"}])'
+    )
 
     class Meta:
         ordering = ('host_name',)
