@@ -1,0 +1,1465 @@
+{% extends 'base/layout.html' %}
+
+{% block title %}Zabbix Problems{% endblock %}
+
+{% block content %}
+<style>
+  /* Zabbix UI Exact Severity Color Scheme */
+  .zbx-sev-5 { background-color: #E60000 !important; color: #ffffff !important; font-weight: bold; } /* Disaster */
+  .zbx-sev-4 { background-color: #E97659 !important; color: #ffffff !important; font-weight: bold; } /* High */
+  .zbx-sev-3 { background-color: #FFA059 !important; color: #212529 !important; font-weight: bold; } /* Average */
+  .zbx-sev-2 { background-color: #FFC859 !important; color: #212529 !important; font-weight: bold; } /* Warning */
+  .zbx-sev-1 { background-color: #7499FF !important; color: #ffffff !important; font-weight: bold; } /* Information */
+  .zbx-sev-0 { background-color: #97AAB3 !important; color: #ffffff !important; font-weight: bold; } /* Not classified */
+
+  /* Highlight row tints */
+  .zbx-row-sev-5 { background-color: rgba(230, 0, 0, 0.12) !important; }
+  .zbx-row-sev-4 { background-color: rgba(233, 118, 89, 0.15) !important; }
+  .zbx-row-sev-3 { background-color: rgba(255, 160, 89, 0.15) !important; }
+  .zbx-row-sev-2 { background-color: rgba(255, 200, 89, 0.15) !important; }
+  .zbx-row-sev-1 { background-color: rgba(116, 153, 255, 0.12) !important; }
+  .zbx-row-sev-0 { background-color: rgba(151, 170, 179, 0.12) !important; }
+
+  /* Zabbix Table Styling */
+  .zbx-table th {
+    background-color: var(--bs-tertiary-bg, #f8f9fa);
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--bs-body-color, #495057);
+    border-bottom: 2px solid var(--bs-border-color, #dee2e6);
+  }
+
+  .zbx-table td {
+    font-size: 13px;
+    vertical-align: middle;
+  }
+
+  .zbx-table.table-compact td, .zbx-table.table-compact th {
+    padding: 0.2rem 0.4rem;
+    font-size: 11.5px;
+  }
+
+  /* Timeline styling matching Zabbix UI */
+  .zbx-timeline-header {
+    background-color: var(--bs-secondary-bg, #e9ecef);
+    font-weight: bold;
+    font-size: 12px;
+    color: var(--bs-body-color, #495057);
+    padding: 4px 12px;
+  }
+  .zbx-timeline-dot {
+    display: inline-block;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background-color: #0d6efd;
+    margin-right: 6px;
+  }
+
+  /* Zabbix Tag Pill */
+  .zbx-tag {
+    font-size: 11px;
+    padding: 2px 6px;
+    border-radius: 3px;
+    background-color: #495057;
+    color: #ffffff;
+    display: inline-block;
+    margin-right: 4px;
+    margin-bottom: 2px;
+  }
+
+  /* Multi-Select Tag Input Box Container */
+  .zbx-multi-input-box {
+    min-height: 31px;
+    cursor: text;
+    background-color: var(--bs-body-bg, #ffffff) !important;
+    border: 1px solid var(--bs-border-color, #dee2e6) !important;
+    border-top-right-radius: 0 !important;
+    border-bottom-right-radius: 0 !important;
+  }
+  .zbx-single-input-box {
+    background-color: var(--bs-body-bg, #ffffff) !important;
+    color: var(--bs-body-color, #212529) !important;
+    border: 1px solid var(--bs-border-color, #dee2e6) !important;
+  }
+  .zbx-multi-input-box:focus-within {
+    border-color: #0d6efd !important;
+    box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25) !important;
+  }
+
+  .zbx-tag-badge {
+    background-color: #0250bb;
+    color: #ffffff;
+    font-size: 11px;
+    font-weight: 500;
+    border-radius: 3px;
+    padding: 2px 6px;
+    display: inline-flex;
+    align-items: center;
+    line-height: 1.2;
+  }
+  .zbx-tag-close {
+    cursor: pointer;
+    font-weight: bold;
+    margin-left: 5px;
+    opacity: 0.8;
+  }
+  .zbx-tag-close:hover {
+    opacity: 1;
+    color: #ffc107;
+  }
+
+
+  /* Zabbix Problem Dotted Link & Popup Menu */
+  .zbx-problem-link {
+    border-bottom: 1px dotted var(--bs-body-color, #495057);
+    text-decoration: none !important;
+    cursor: pointer;
+    font-weight: 600;
+  }
+  .zbx-problem-link:hover {
+    color: #0d6efd !important;
+    border-bottom-color: #0d6efd;
+  }
+
+  .zbx-context-menu {
+    position: absolute;
+    z-index: 1060;
+    min-width: 220px;
+    background-color: var(--bs-card-bg, #ffffff);
+    border: 1px solid var(--bs-border-color, #dee2e6);
+    border-radius: 4px;
+    box-shadow: 0 6px 16px rgba(0,0,0,0.2);
+    font-size: 13px;
+    display: none;
+    overflow: hidden;
+  }
+  .zbx-context-header {
+    padding: 6px 14px;
+    font-size: 11px;
+    font-weight: 700;
+    color: #8c98a4;
+    letter-spacing: 0.5px;
+    text-uppercase: uppercase;
+    background-color: var(--bs-tertiary-bg, rgba(0,0,0,0.04));
+    border-bottom: 1px solid var(--bs-border-color, rgba(0,0,0,0.05));
+  }
+  .zbx-context-item {
+    display: flex;
+    align-items: center;
+    padding: 8px 16px;
+    color: var(--bs-body-color, #212529);
+    text-decoration: none !important;
+    transition: background 0.15s ease-in-out;
+  }
+  .zbx-context-item:hover {
+    background-color: var(--bs-secondary-bg, #e9ecef);
+    color: var(--bs-primary, #0d6efd);
+  }
+
+
+  /* Filter Panel matching Zabbix UI 100% */
+  .zbx-filter-panel {
+    background-color: var(--bs-card-bg, #ffffff);
+    color: var(--bs-body-color, #212529);
+    border: 1px solid var(--bs-border-color, #dee2e6);
+    border-radius: 4px;
+    padding: 16px;
+    margin-bottom: 16px;
+    font-size: 13px;
+  }
+
+  .zbx-filter-panel label {
+    font-size: 13px;
+    color: var(--bs-body-color, #212529) !important;
+  }
+
+  .zbx-btn-select {
+    padding: 0.25rem 0.5rem;
+    font-size: 12px;
+  }
+</style>
+
+<!-- Top Header Navigation Bar (Zabbix UI Style) -->
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <div class="d-flex align-items-center gap-2">
+    <span class="badge bg-danger fs-6 px-2 py-1">ZABBIX</span>
+    <h2 class="m-0 fs-3 fw-bold">Problems</h2>
+    <span id="problems-count-badge" class="badge bg-secondary ms-2">0 problems</span>
+  </div>
+  <div class="d-flex gap-2 align-items-center">
+    <select id="auto-refresh-select" class="form-select form-select-sm" style="width: auto;" onchange="handleAutoRefreshChange()">
+      <option value="0">Auto-refresh: Off</option>
+      <option value="10" selected>Auto-refresh: 10s</option>
+      <option value="30">Auto-refresh: 30s</option>
+      <option value="60">Auto-refresh: 60s</option>
+    </select>
+    <button class="btn btn-sm btn-outline-secondary" onclick="exportToCSV()">Export to CSV</button>
+    <button class="btn btn-sm btn-primary" type="button" data-bs-toggle="collapse" data-bs-target="#filterCollapse" aria-expanded="true">
+      Filter <i class="mdi mdi-filter-variant ms-1"></i>
+    </button>
+  </div>
+</div>
+
+<!-- 100% Zabbix UI Filter Panel (2-Column Grid Layout) -->
+<div class="collapse show" id="filterCollapse">
+  <div class="zbx-filter-panel shadow-sm">
+    <form id="zbx-filter-form" onsubmit="event.preventDefault(); applyFilter();">
+
+      <div class="row g-4">
+        <!-- Left Column -->
+        <div class="col-lg-6">
+          <!-- Show Options -->
+          <div class="row mb-2 align-items-center">
+            <label class="col-sm-3 col-form-label text-end fw-bold">Show</label>
+            <div class="col-sm-9">
+              <div class="btn-group w-100" role="group">
+                <input type="radio" class="btn-check" name="show_type" id="show_recent" value="recent" checked>
+                <label class="btn btn-sm btn-outline-secondary" for="show_recent">Recent problems</label>
+
+                <input type="radio" class="btn-check" name="show_type" id="show_problems" value="problems">
+                <label class="btn btn-sm btn-outline-secondary" for="show_problems">Problems</label>
+
+                <input type="radio" class="btn-check" name="show_type" id="show_history" value="history">
+                <label class="btn btn-sm btn-outline-secondary" for="show_history">History</label>
+              </div>
+            </div>
+          </div>
+
+          <!-- Host groups -->
+          <div class="row mb-2 align-items-center">
+            <label class="col-sm-3 col-form-label text-end fw-bold">Host groups</label>
+            <div class="col-sm-9">
+              <div class="input-group input-group-sm">
+                <div class="form-control form-control-sm zbx-multi-input-box d-flex flex-wrap align-items-center gap-1 p-1" onclick="document.getElementById('filter-hostgroup').focus()">
+                  <div id="tags-filter-hostgroup" class="d-inline-flex flex-wrap align-items-center gap-1"></div>
+                  <input type="text" id="filter-hostgroup" class="border-0 bg-transparent flex-grow-1 p-0 shadow-none text-body small" placeholder="Type here to search..." style="outline: none; min-width: 100px;">
+                </div>
+                <button class="btn btn-outline-secondary zbx-btn-select" type="button" onclick="openSelectionModal('hostgroups')">Select</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Hosts -->
+          <div class="row mb-2 align-items-center">
+            <label class="col-sm-3 col-form-label text-end fw-bold">Hosts</label>
+            <div class="col-sm-9">
+              <div class="input-group input-group-sm">
+                <div class="form-control form-control-sm zbx-multi-input-box d-flex flex-wrap align-items-center gap-1 p-1" onclick="document.getElementById('filter-host').focus()">
+                  <div id="tags-filter-host" class="d-inline-flex flex-wrap align-items-center gap-1"></div>
+                  <input type="text" id="filter-host" class="border-0 bg-transparent flex-grow-1 p-0 shadow-none text-body small" placeholder="Type here to search..." style="outline: none; min-width: 100px;">
+                </div>
+                <button class="btn btn-outline-secondary zbx-btn-select" type="button" onclick="openSelectionModal('hosts')">Select</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Application (Single Select Only) -->
+          <div class="row mb-2 align-items-center">
+            <label class="col-sm-3 col-form-label text-end fw-bold">Application</label>
+            <div class="col-sm-9">
+              <div class="input-group input-group-sm">
+                <input type="text" id="filter-app" class="form-control form-control-sm zbx-single-input-box" placeholder="Type or click Select...">
+                <button class="btn btn-outline-secondary zbx-btn-select" type="button" onclick="openSelectionModal('applications')">Select</button>
+              </div>
+            </div>
+          </div>
+
+
+          <!-- Triggers -->
+          <div class="row mb-2 align-items-center">
+            <label class="col-sm-3 col-form-label text-end fw-bold">Triggers</label>
+            <div class="col-sm-9">
+              <div class="input-group input-group-sm">
+                <div class="form-control form-control-sm zbx-multi-input-box d-flex flex-wrap align-items-center gap-1 p-1" onclick="document.getElementById('filter-trigger').focus()">
+                  <div id="tags-filter-trigger" class="d-inline-flex flex-wrap align-items-center gap-1"></div>
+                  <input type="text" id="filter-trigger" class="border-0 bg-transparent flex-grow-1 p-0 shadow-none text-body small" placeholder="Type here to search..." style="outline: none; min-width: 100px;">
+                </div>
+                <button class="btn btn-outline-secondary zbx-btn-select" type="button" onclick="openSelectionModal('triggers')">Select</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Problem -->
+          <div class="row mb-2 align-items-center">
+            <label class="col-sm-3 col-form-label text-end fw-bold">Problem</label>
+            <div class="col-sm-9">
+              <input type="text" id="filter-problem" class="form-control form-control-sm zbx-single-input-box" placeholder="Search problem name...">
+            </div>
+          </div>
+
+
+
+
+
+          <!-- Minimum severity -->
+          <div class="row mb-2 align-items-center">
+            <label class="col-sm-3 col-form-label text-end fw-bold">Minimum severity</label>
+            <div class="col-sm-9">
+              <select id="filter-min-severity" class="form-select form-select-sm">
+                <option value="0" selected>Not classified</option>
+                <option value="1">Information</option>
+                <option value="2">Warning</option>
+                <option value="3">Average</option>
+                <option value="4">High</option>
+                <option value="5">Disaster</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Age less than -->
+          <div class="row mb-2 align-items-center" id="age-less-than-row">
+            <label class="col-sm-3 col-form-label text-end fw-bold">Age less than</label>
+
+            <div class="col-sm-9">
+              <div class="input-group input-group-sm" style="max-width: 180px;">
+                <div class="input-group-text">
+                  <input class="form-check-input mt-0" type="checkbox" id="filter-age-chk">
+                </div>
+                <input type="number" id="filter-age-val" class="form-control form-control-sm" value="14" min="1">
+                <span class="input-group-text">days</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Right Column -->
+        <div class="col-lg-6">
+          <!-- Host inventory -->
+          <div class="row mb-2 align-items-center">
+            <label class="col-sm-4 col-form-label text-end fw-bold">Host inventory</label>
+            <div class="col-sm-8">
+              <div id="host-inventory-filters">
+                <div class="input-group input-group-sm host-inventory-filter mb-1">
+                <select class="form-select form-select-sm" style="max-width: 130px;">
+                  <option value="Type">Type</option>
+                  <option value="OS">OS</option>
+                  <option value="Name">Name</option>
+                </select>
+                <input type="text" class="form-control form-control-sm">
+                <button type="button" class="btn btn-link text-decoration-none btn-sm px-2" onclick="removeInventoryFilter(this)">Remove</button>
+                </div>
+              </div>
+              <a href="#" class="small text-decoration-none mt-1 inline-block" onclick="event.preventDefault(); addInventoryFilter();">+ Add</a>
+            </div>
+          </div>
+
+          <!-- Tags -->
+          <div class="row mb-2 align-items-center">
+            <label class="col-sm-4 col-form-label text-end fw-bold">Tags</label>
+            <div class="col-sm-8">
+              <div class="d-flex align-items-center gap-2 mb-1">
+                <div class="btn-group btn-group-sm" role="group">
+                  <input type="radio" class="btn-check" name="tag_logic" id="tag_andor" checked>
+                  <label class="btn btn-outline-secondary" for="tag_andor">And/Or</label>
+                  <input type="radio" class="btn-check" name="tag_logic" id="tag_or">
+                  <label class="btn btn-outline-secondary" for="tag_or">Or</label>
+                </div>
+              </div>
+              <div id="tag-filters">
+              <div class="input-group input-group-sm mb-1 tag-filter-row">
+                <input type="text" id="filter-tag-name" class="form-control form-control-sm" placeholder="tag">
+                <select id="filter-tag-op" class="form-select form-select-sm" style="max-width: 100px;">
+                  <option value="contains">Contains</option>
+                  <option value="equals">Equals</option>
+                </select>
+                <input type="text" id="filter-tag-val" class="form-control form-control-sm" placeholder="value">
+                <button type="button" class="btn btn-link text-decoration-none btn-sm px-1" onclick="removeTagFilter(this)">Remove</button>
+              </div>
+              </div>
+              <a href="#" class="small text-decoration-none" onclick="event.preventDefault(); addTagFilter();">+ Add</a>
+            </div>
+          </div>
+
+          <!-- Show tags -->
+          <div class="row mb-2 align-items-center">
+            <label class="col-sm-4 col-form-label text-end fw-bold">Show tags</label>
+            <div class="col-sm-8 d-flex align-items-center gap-3">
+              <div class="btn-group btn-group-sm" role="group">
+                <input type="radio" class="btn-check" name="show_tags_count" id="st_none" value="0">
+                <label class="btn btn-outline-secondary" for="st_none">None</label>
+                <input type="radio" class="btn-check" name="show_tags_count" id="st_1" value="1">
+                <label class="btn btn-outline-secondary" for="st_1">1</label>
+                <input type="radio" class="btn-check" name="show_tags_count" id="st_2" value="2">
+                <label class="btn btn-outline-secondary" for="st_2">2</label>
+                <input type="radio" class="btn-check" name="show_tags_count" id="st_3" value="3" checked>
+                <label class="btn btn-outline-secondary" for="st_3">3</label>
+              </div>
+              <div class="d-flex align-items-center gap-1">
+                <span class="small fw-bold">Tag name</span>
+                <div class="btn-group btn-group-sm" role="group">
+                  <input type="radio" class="btn-check" name="tag_name_fmt" id="tn_full" checked>
+                  <label class="btn btn-outline-secondary" for="tn_full">Full</label>
+                  <input type="radio" class="btn-check" name="tag_name_fmt" id="tn_short">
+                  <label class="btn btn-outline-secondary" for="tn_short">Shortened</label>
+                  <input type="radio" class="btn-check" name="tag_name_fmt" id="tn_none">
+                  <label class="btn btn-outline-secondary" for="tn_none">None</label>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Show operational data -->
+          <div class="row mb-2 align-items-center">
+            <label class="col-sm-4 col-form-label text-end fw-bold">Show operational data</label>
+            <div class="col-sm-8">
+              <div class="btn-group btn-group-sm w-100" role="group">
+                <input type="radio" class="btn-check" name="opdata_fmt" id="op_none" value="none">
+                <label class="btn btn-outline-secondary" for="op_none">None</label>
+                <input type="radio" class="btn-check" name="opdata_fmt" id="op_sep" value="separately" checked>
+                <label class="btn btn-outline-secondary" for="op_sep">Separately</label>
+                <input type="radio" class="btn-check" name="opdata_fmt" id="op_with" value="with_name">
+                <label class="btn btn-outline-secondary" for="op_with">With problem name</label>
+              </div>
+            </div>
+          </div>
+
+          <!-- Checkboxes Grid -->
+          <div class="row mb-2">
+            <div class="col-sm-6">
+              <div class="form-check mb-1">
+                <input class="form-check-input" type="checkbox" id="filter-suppressed">
+                <label class="form-check-label" for="filter-suppressed">Show suppressed problems</label>
+              </div>
+              <div class="form-check mb-1">
+                <input class="form-check-input" type="checkbox" id="filter-compact-view">
+                <label class="form-check-label" for="filter-compact-view">Compact view</label>
+              </div>
+              <div class="form-check mb-1">
+                <input class="form-check-input" type="checkbox" id="filter-show-details">
+                <label class="form-check-label" for="filter-show-details">Show details</label>
+              </div>
+            </div>
+
+            <div class="col-sm-6">
+              <div class="form-check mb-1">
+                <input class="form-check-input" type="checkbox" id="filter-unack-only">
+                <label class="form-check-label" for="filter-unack-only">Show unacknowledged only</label>
+              </div>
+              <div class="form-check mb-1">
+                <input class="form-check-input" type="checkbox" id="filter-show-timeline" checked>
+                <label class="form-check-label" for="filter-show-timeline">Show timeline</label>
+              </div>
+              <div class="form-check mb-1">
+                <input class="form-check-input" type="checkbox" id="filter-highlight-row">
+                <label class="form-check-label" for="filter-highlight-row">Highlight whole row</label>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Action Buttons -->
+      <div class="text-center mt-3 pt-2 border-top">
+        <button type="submit" class="btn btn-sm btn-primary px-4 me-2">Apply</button>
+        <button type="button" class="btn btn-sm btn-outline-secondary px-4" onclick="resetFilter()">Reset</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- 100% Zabbix UI Table Card -->
+<div class="card shadow-sm">
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-hover zbx-table mb-0" id="problems-table">
+        <thead>
+          <tr>
+            <th style="width: 140px;">Time ▾</th>
+            <th style="width: 35px;" class="text-center"><input type="checkbox" id="select-all-chk"></th>
+            <th style="width: 110px;" class="text-center">Severity</th>
+            <th style="width: 130px;">Recovery time</th>
+            <th style="width: 90px;">Status</th>
+            <th style="width: 45px;" class="text-center">Info</th>
+            <th style="width: 160px;">Host</th>
+            <th>Problem</th>
+            <th style="width: 110px;">Duration</th>
+            <th style="width: 65px;" class="text-center">Ack</th>
+            <th style="width: 75px;" class="text-center">Actions</th>
+            <th style="width: 180px;">Tags</th>
+          </tr>
+        </thead>
+        <tbody id="problems-tbody">
+          <tr>
+            <td colspan="12" class="text-center py-4 text-muted">
+              <div class="spinner-border spinner-border-sm me-2" role="status"></div> Loading Zabbix problems...
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- Generic Zabbix Item Selection Modal (Multi-Select Supported) -->
+<div class="modal fade" id="zbxSelectionModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content shadow">
+      <div class="modal-header bg-light py-2 px-3">
+        <h5 class="modal-title fw-bold" id="zbxSelectionModalTitle">Select Items</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="p-2 border-bottom bg-body">
+        <input type="text" id="zbx-modal-search" class="form-control form-control-sm" placeholder="Type to filter..." onkeyup="filterSelectionModalList()">
+      </div>
+      <div class="modal-body p-0" style="max-height: 320px; overflow-y: auto;">
+        <div class="list-group list-group-flush" id="zbx-selection-list">
+          <div class="p-3 text-center text-muted">Loading items...</div>
+        </div>
+      </div>
+      <div class="modal-footer py-2 px-3 bg-light d-flex justify-content-between">
+        <div>
+          <button type="button" class="btn btn-sm btn-outline-secondary me-1 py-1" onclick="toggleSelectAllModalItems(true)">Select All</button>
+          <button type="button" class="btn btn-sm btn-outline-secondary py-1" onclick="toggleSelectAllModalItems(false)">Clear All</button>
+        </div>
+        <button type="button" class="btn btn-sm btn-primary py-1 px-3 fw-bold" id="zbx-modal-apply-btn" onclick="applyModalMultiSelection()">Apply Selection</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+
+<!-- Modal Acknowledge Problem -->
+<div class="modal fade" id="ackModal" tabindex="-1" aria-labelledby="ackModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content shadow">
+      <div class="modal-header bg-primary text-white">
+        <h5 class="modal-title" id="ackModalLabel"><i class="mdi mdi-check-decagram me-1"></i> Acknowledge Problem</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="ack-event-id">
+        <div class="mb-3">
+          <label class="fw-bold form-label">Problem:</label>
+          <div id="ack-problem-name" class="p-2 bg-light border rounded text-danger fw-bold"></div>
+        </div>
+        <div class="mb-3">
+          <label for="ack-message" class="form-label fw-bold">Message:</label>
+          <textarea id="ack-message" class="form-control" rows="3" placeholder="Type acknowledgment message..."></textarea>
+        </div>
+        <div class="form-check form-switch mb-3">
+          <input class="form-check-input" type="checkbox" id="ack-close-chk" checked>
+          <label class="form-check-label fw-bold text-success" for="ack-close-chk">Close Problem on Zabbix</label>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-primary" onclick="submitAcknowledge()"><i class="mdi mdi-check me-1"></i> Acknowledge (Ack)</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  let refreshTimer = null;
+  let currentProblemsData = [];
+
+  const SEVERITY_MAP = {
+    0: { name: 'Not classified', class: 'zbx-sev-0', rowClass: 'zbx-row-sev-0' },
+    1: { name: 'Information', class: 'zbx-sev-1', rowClass: 'zbx-row-sev-1' },
+    2: { name: 'Warning', class: 'zbx-sev-2', rowClass: 'zbx-row-sev-2' },
+    3: { name: 'Average', class: 'zbx-sev-3', rowClass: 'zbx-row-sev-3' },
+    4: { name: 'High', class: 'zbx-sev-4', rowClass: 'zbx-row-sev-4' },
+    5: { name: 'Disaster', class: 'zbx-sev-5', rowClass: 'zbx-row-sev-5' },
+  };
+
+  function formatTimestamp(ts) {
+    if (!ts || ts === 0) return '';
+    const d = new Date(ts * 1000);
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+  }
+
+  function formatTimeOnly(ts) {
+    if (!ts || ts === 0) return '';
+    const d = new Date(ts * 1000);
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+  }
+
+  function formatDateGroupHeader(ts) {
+    if (!ts || ts === 0) return '';
+    const d = new Date(ts * 1000);
+    const today = new Date();
+    if (d.toDateString() === today.toDateString()) {
+      return 'Today';
+    }
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+  }
+
+  function formatDuration(clock, r_clock) {
+    if (!clock) return '';
+    const end = (r_clock && r_clock > 0) ? r_clock : Math.floor(Date.now() / 1000);
+    let diff = end - clock;
+    if (diff < 0) diff = 0;
+
+    const days = Math.floor(diff / 86400);
+    diff %= 86400;
+    const hours = Math.floor(diff / 3600);
+    diff %= 3600;
+    const minutes = Math.floor(diff / 60);
+
+    if (days > 0) return `${days}d ${hours}h ${minutes}m`;
+    if (hours > 0) return `${hours}h ${minutes}m`;
+    return `${minutes}m`;
+  }
+
+  function getElVal(id, defaultVal = '') {
+    const el = document.getElementById(id);
+    return el ? el.value.trim() : defaultVal;
+  }
+
+  function getElCheck(id, defaultVal = false) {
+    const el = document.getElementById(id);
+    return el ? el.checked : defaultVal;
+  }
+
+  function addInventoryFilter() {
+    const container = document.getElementById('host-inventory-filters');
+    if (!container) return;
+    const row = document.createElement('div');
+    row.className = 'input-group input-group-sm host-inventory-filter mb-1';
+    row.innerHTML = `
+      <select class="form-select form-select-sm" style="max-width: 130px;">
+        <option value="Type">Type</option>
+        <option value="OS">OS</option>
+        <option value="Name">Name</option>
+      </select>
+      <input type="text" class="form-control form-control-sm">
+      <button type="button" class="btn btn-link text-decoration-none btn-sm px-2" onclick="removeInventoryFilter(this)">Remove</button>
+    `;
+    container.appendChild(row);
+  }
+
+  function removeInventoryFilter(button) {
+    const rows = document.querySelectorAll('.host-inventory-filter');
+    const row = button.closest('.host-inventory-filter');
+    if (!row) return;
+    if (rows.length === 1) {
+      row.querySelector('input').value = '';
+      return;
+    }
+    row.remove();
+  }
+
+  function addTagFilter() {
+    const container = document.getElementById('tag-filters');
+    if (!container) return;
+    const row = document.createElement('div');
+    row.className = 'input-group input-group-sm mb-1 tag-filter-row';
+    row.innerHTML = `
+      <input type="text" class="form-control form-control-sm" placeholder="tag">
+      <select class="form-select form-select-sm" style="max-width: 100px;">
+        <option value="contains">Contains</option>
+        <option value="equals">Equals</option>
+      </select>
+      <input type="text" class="form-control form-control-sm" placeholder="value">
+      <button type="button" class="btn btn-link text-decoration-none btn-sm px-1" onclick="removeTagFilter(this)">Remove</button>
+    `;
+    container.appendChild(row);
+  }
+
+  function removeTagFilter(button) {
+    const rows = document.querySelectorAll('.tag-filter-row');
+    const row = button.closest('.tag-filter-row');
+    if (!row) return;
+    if (rows.length === 1) {
+      row.querySelectorAll('input').forEach(input => input.value = '');
+      return;
+    }
+    row.remove();
+  }
+
+  function getInventoryFilters() {
+    return [...document.querySelectorAll('.host-inventory-filter')]
+      .map(row => ({
+        type: row.querySelector('select')?.value || 'Type',
+        value: row.querySelector('input')?.value.trim() || ''
+      }))
+      .filter(filter => filter.value);
+  }
+
+  function getTagFilters() {
+    return [...document.querySelectorAll('.tag-filter-row')]
+      .map(row => {
+        const inputs = row.querySelectorAll('input');
+        return {
+          name: inputs[0]?.value.trim() || '',
+          operator: row.querySelector('select')?.value || 'contains',
+          value: inputs[1]?.value.trim() || ''
+        };
+      })
+      .filter(filter => filter.name || filter.value);
+  }
+
+  function applyFilter() {
+    loadProblems();
+  }
+
+  function loadProblems() {
+
+    const minSeverity = getElVal('filter-min-severity', '0');
+    const hostName = getElVal('filter-host', '');
+    const search = getElVal('filter-problem', '');
+    const showTypeRadio = document.querySelector('input[name="show_type"]:checked');
+    const showType = showTypeRadio ? showTypeRadio.value : 'recent';
+    const inventoryFilters = getInventoryFilters();
+    const tagFilters = getTagFilters();
+
+    const params = new URLSearchParams({
+      min_severity: minSeverity,
+      search: search,
+      host_name: hostName,
+      recent: (showType === 'recent' || showType === 'problems') ? 'true' : 'false',
+      inventory: JSON.stringify(inventoryFilters),
+      tags: JSON.stringify(tagFilters)
+    });
+
+    fetch(`/plugins/netbox-zabbix/api/problems/?${params.toString()}`)
+      .then(res => res.json())
+      .then(data => {
+        if (data.error) {
+          showTableError(data.error);
+          return;
+        }
+        currentProblemsData = data.problems || [];
+        renderProblemsTable(currentProblemsData);
+      })
+      .catch(err => {
+        showTableError(err.message || 'Error connecting to Zabbix API');
+      });
+  }
+
+  function showTableError(msg) {
+    const tbody = document.getElementById('problems-tbody');
+    if (tbody) {
+      tbody.innerHTML = `<tr><td colspan="12" class="text-center py-4 text-danger fw-bold"><i class="mdi mdi-alert me-1"></i> Lỗi nạp dữ liệu từ Zabbix: ${msg}</td></tr>`;
+    }
+    const badge = document.getElementById('problems-count-badge');
+    if (badge) badge.textContent = '0 problems';
+  }
+
+  function getInventoryValue(problem, type) {
+    const inventory = problem.inventory || {};
+    const keyMap = { Type: 'type', OS: 'os', Name: 'name' };
+    return String(inventory[keyMap[type] || type] || '').toLowerCase();
+  }
+
+  function matchesInventoryFilters(problem, filters) {
+    return filters.every(filter => getInventoryValue(problem, filter.type).includes(filter.value.toLowerCase()));
+  }
+
+  function matchesTagFilters(problem, filters) {
+    const tags = problem.tags || [];
+    return filters.every(filter => tags.some(tag => {
+      const name = String(tag.tag || '').toLowerCase();
+      const value = String(tag.value || '').toLowerCase();
+      const expectedName = filter.name.toLowerCase();
+      const expectedValue = filter.value.toLowerCase();
+      const nameMatches = name.includes(expectedName);
+      const valueMatches = filter.operator === 'equals' ? value === expectedValue : value.includes(expectedValue);
+      return nameMatches && valueMatches;
+    }));
+  }
+
+  function renderProblemsTable(problems) {
+    const tbody = document.getElementById('problems-tbody');
+    const table = document.getElementById('problems-table');
+    if (!tbody || !table) return;
+
+    const unackOnly = getElCheck('filter-unack-only', false);
+    const showTimeline = getElCheck('filter-show-timeline', true);
+    const compactView = getElCheck('filter-compact-view', false);
+    const highlightRow = getElCheck('filter-highlight-row', false);
+    const showDetails = getElCheck('filter-show-details', false);
+    const inventoryFilters = getInventoryFilters();
+    const tagFilters = getTagFilters();
+
+    const opdataRadio = document.querySelector('input[name="opdata_fmt"]:checked');
+    const opdataOption = opdataRadio ? opdataRadio.value : 'separately';
+
+    if (compactView) {
+      table.classList.add('table-compact');
+    } else {
+      table.classList.remove('table-compact');
+    }
+
+    const hostList = getSelectedList('filter-host');
+    const triggerList = getSelectedList('filter-trigger');
+    const hostgroupList = getSelectedList('filter-hostgroup');
+    const appVal = getElVal('filter-app', '').toLowerCase();
+    const problemText = getElVal('filter-problem', '').toLowerCase();
+    const minSeverity = parseInt(getElVal('filter-min-severity', '0')) || 0;
+    const ageDays = parseInt(getElVal('filter-age-days', '14')) || 0;
+    const ageChk = getElCheck('filter-age-chk', false);
+
+    const showTypeRadio = document.querySelector('input[name="show_type"]:checked');
+    const showType = showTypeRadio ? showTypeRadio.value : 'recent';
+
+    let filtered = problems || [];
+
+    // Filter by Show Type (Problems: unresolved only)
+    if (showType === 'problems') {
+      filtered = filtered.filter(p => !p.r_clock || p.r_clock === 0);
+    }
+
+    // Filter by Unacknowledged only
+    if (unackOnly) {
+      filtered = filtered.filter(p => !p.acknowledged);
+    }
+
+    // Filter by Minimum severity
+    if (minSeverity > 0) {
+      filtered = filtered.filter(p => (p.severity || 0) >= minSeverity);
+    }
+
+    // Filter by Age less than
+    if (ageChk && ageDays > 0) {
+      const maxAgeSec = ageDays * 86400;
+      const nowSec = Math.floor(Date.now() / 1000);
+      filtered = filtered.filter(p => (nowSec - (p.clock || 0)) <= maxAgeSec);
+    }
+
+    // Filter by Tag name
+    if (inventoryFilters.length) filtered = filtered.filter(p => matchesInventoryFilters(p, inventoryFilters));
+    if (tagFilters.length) filtered = filtered.filter(p => matchesTagFilters(p, tagFilters));
+
+    // Filter by Problem text
+    if (problemText) {
+      filtered = filtered.filter(p => {
+        const pName = (p.name || '').toLowerCase();
+        const pOp = (p.opdata || '').toLowerCase();
+        return pName.includes(problemText) || pOp.includes(problemText);
+      });
+    }
+
+    // Filter by Application text
+    if (appVal) {
+      filtered = filtered.filter(p => {
+        const pName = (p.name || '').toLowerCase();
+        const pOp = (p.opdata || '').toLowerCase();
+        return pName.includes(appVal) || pOp.includes(appVal);
+      });
+    }
+
+    // Filter by Hosts
+    if (hostList.length > 0) {
+      filtered = filtered.filter(p => {
+        const hName = (p.host_name || p.host || '').toLowerCase();
+        return hostList.some(h => hName.includes(h.toLowerCase()));
+      });
+    }
+
+    // Filter by Triggers
+    if (triggerList.length > 0) {
+      filtered = filtered.filter(p => {
+        const tName = (p.name || '').toLowerCase();
+        return triggerList.some(t => tName.includes(t.toLowerCase()));
+      });
+    }
+
+    // Filter by Host groups
+    if (hostgroupList.length > 0) {
+      filtered = filtered.filter(p => {
+        const hGroup = (p.host_group || p.host_name || p.host || '').toLowerCase();
+        return hostgroupList.some(g => hGroup.includes(g.toLowerCase()));
+      });
+    }
+
+    const badge = document.getElementById('problems-count-badge');
+    if (badge) badge.textContent = `${filtered.length} problems`;
+
+
+
+    if (!filtered || filtered.length === 0) {
+      tbody.innerHTML = `<tr><td colspan="12" class="text-center py-4 text-success fw-bold"><i class="mdi mdi-check-circle me-1"></i> No problems found</td></tr>`;
+      return;
+    }
+
+
+    let html = '';
+    let lastDateGroup = '';
+
+    filtered.forEach(p => {
+      const sev = SEVERITY_MAP[p.severity] || SEVERITY_MAP[0];
+      const fullTimeStr = formatTimestamp(p.clock);
+      const timeOnlyStr = formatTimeOnly(p.clock);
+      const dateGroupStr = formatDateGroupHeader(p.clock);
+      const recTimeStr = formatTimestamp(p.r_clock);
+      const durationStr = formatDuration(p.clock, p.r_clock);
+      const isResolved = p.r_clock && p.r_clock > 0;
+      const statusText = isResolved ? '<span class="text-success fw-bold">RESOLVED</span>' : '<span class="text-danger fw-bold">PROBLEM</span>';
+
+      // Group header if timeline is active
+      if (showTimeline && dateGroupStr && dateGroupStr !== lastDateGroup) {
+        lastDateGroup = dateGroupStr;
+        html += `
+          <tr class="zbx-timeline-header">
+            <td colspan="12">
+              <span class="zbx-timeline-dot"></span><strong>${dateGroupStr}</strong>
+            </td>
+          </tr>
+        `;
+      }
+
+      // Link to NetBox Device if available
+      let hostHtml = p.host_name || p.host;
+      if (p.netbox_device_id) {
+        hostHtml = `<a href="/dcim/devices/${p.netbox_device_id}/" class="fw-bold text-decoration-none">${escapeHtml(p.host_name || p.host)}</a>`;
+      } else {
+        hostHtml = `<span class="fw-bold text-body">${escapeHtml(hostHtml)}</span>`;
+      }
+
+      // Ack status
+      let ackHtml = '';
+      if (p.acknowledged) {
+        ackHtml = `<span class="text-success fw-bold" style="cursor:pointer;" onclick="openAckModal('${p.eventid}', '${escapeHtml(p.name)}')">Yes</span>`;
+      } else {
+        ackHtml = `<span class="text-danger fw-bold" style="cursor:pointer;" onclick="openAckModal('${p.eventid}', '${escapeHtml(p.name)}')">No</span>`;
+      }
+
+      // Operational Data & Description (Zabbix Dotted Link with Popup Context Menu)
+      let problemDisplay = `<i class="mdi mdi-unfold-more-horizontal me-1 text-secondary"></i><a href="#" class="zbx-problem-link text-body" onclick="toggleProblemContextMenu(event, '${escapeHtml(p.name)}', '${p.eventid}')">${escapeHtml(p.name)}</a> <span class="badge bg-secondary text-white ms-1" style="font-size: 10px; padding: 2px 5px; cursor: pointer;" title="View trigger description">?</span>`;
+      if (p.opdata) {
+        if (opdataOption === 'with_name') {
+          problemDisplay += ` <span class="text-muted font-monospace small">(${escapeHtml(p.opdata)})</span>`;
+        } else if (opdataOption === 'separately') {
+          problemDisplay += `<div class="small text-muted font-monospace mt-1 ms-3">${escapeHtml(p.opdata)}</div>`;
+        }
+      }
+      if (showDetails) {
+        problemDisplay += `<div class="small text-secondary font-monospace mt-1 ms-3"><i class="mdi mdi-information-outline me-1"></i>EventID: ${p.eventid} | ObjectID: ${p.objectid}</div>`;
+      }
+
+
+      // Tags
+      let tagsHtml = '';
+      if (p.tags && p.tags.length > 0) {
+        p.tags.forEach(t => {
+          tagsHtml += `<span class="zbx-tag">${escapeHtml(t.tag)}${t.value ? ': ' + escapeHtml(t.value) : ''}</span>`;
+        });
+      }
+
+      // Actions column summary
+      let actionsHtml = '-';
+      if (p.acknowledges && p.acknowledges.length > 0) {
+        const count = p.acknowledges.length;
+        const lastAck = p.acknowledges[p.acknowledges.length - 1];
+        actionsHtml = `<span class="badge bg-info text-dark" title="${escapeHtml(lastAck.message || 'Ack')}"><i class="mdi mdi-comment-outline me-1"></i>${count}</span>`;
+      }
+
+      const rowBgClass = highlightRow ? sev.rowClass : '';
+      const displayTime = showTimeline ? timeOnlyStr : fullTimeStr;
+
+      html += `
+        <tr class="${rowBgClass}">
+          <td class="font-monospace text-nowrap">
+            ${showTimeline ? '<span class="text-primary me-1">•</span>' : ''}${displayTime}
+          </td>
+          <td class="text-center"><input type="checkbox" class="problem-select-chk"></td>
+          <td class="${sev.class} text-center text-nowrap">${sev.name}</td>
+          <td class="font-monospace text-nowrap">${recTimeStr || '-'}</td>
+          <td class="text-nowrap">${statusText}</td>
+          <td class="text-center"><i class="mdi mdi-information-outline text-muted" title="${escapeHtml(p.name)}"></i></td>
+          <td class="text-nowrap">${hostHtml}</td>
+          <td>${problemDisplay}</td>
+          <td class="font-monospace text-nowrap">${durationStr}</td>
+          <td class="text-center">${ackHtml}</td>
+          <td class="text-center">${actionsHtml}</td>
+          <td>${tagsHtml}</td>
+        </tr>
+      `;
+    });
+
+    tbody.innerHTML = html;
+  }
+
+  function escapeHtml(str) {
+    if (!str) return '';
+    return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+  }
+
+  function getHistoryItemNames(problemName) {
+    const nameLower = (problemName || '').toLowerCase();
+    if (nameLower.includes('apache')) {
+      return ['Apache: get status', 'Apache: service status'];
+    }
+    if (nameLower.includes('http')) {
+      return ['HTTP service is running', 'HTTP response code'];
+    }
+    if (nameLower.includes('zabbix agent') || nameLower.includes('agent')) {
+      return ['Zabbix agent availability', 'Agent ping status'];
+    }
+    if (nameLower.includes('ftp')) {
+      return ['FTP service is running', 'FTP port status'];
+    }
+    if (nameLower.includes('ping') || nameLower.includes('icmp')) {
+      return ['ICMP ping response time', 'ICMP packet loss'];
+    }
+    if (nameLower.includes('timer') || nameLower.includes('poller') || nameLower.includes('trapper') || nameLower.includes('task manager')) {
+      return [`${problemName} status`, 'Zabbix process status'];
+    }
+    return [problemName];
+  }
+
+  function toggleProblemContextMenu(e, problemName, eventId) {
+    e.preventDefault();
+    e.stopPropagation();
+
+    let menu = document.getElementById('zbx-problem-context-menu');
+    if (!menu) {
+      menu = document.createElement('div');
+      menu.id = 'zbx-problem-context-menu';
+      menu.className = 'zbx-context-menu shadow';
+      document.body.appendChild(menu);
+    }
+
+    const historyItems = getHistoryItemNames(problemName);
+    let historyHtml = '';
+    historyItems.forEach(item => {
+      historyHtml += `<a class="zbx-context-item" href="#" onclick="event.preventDefault();"><i class="mdi mdi-history me-2 text-primary"></i>${escapeHtml(item)}</a>`;
+    });
+
+    menu.innerHTML = `
+      <div class="zbx-context-header">TRIGGER</div>
+      <a class="zbx-context-item" href="#" onclick="event.preventDefault();"><i class="mdi mdi-alert-circle-outline me-2 text-danger"></i>Problems</a>
+      <a class="zbx-context-item" href="#" onclick="event.preventDefault();"><i class="mdi mdi-cog-outline me-2 text-secondary"></i>Configuration</a>
+      <div class="border-top my-1"></div>
+      <div class="zbx-context-header">HISTORY</div>
+      ${historyHtml}
+    `;
+
+    menu.style.left = `${e.pageX}px`;
+    menu.style.top = `${e.pageY + 5}px`;
+    menu.style.display = 'block';
+  }
+
+
+  document.addEventListener('click', function(e) {
+    const menu = document.getElementById('zbx-problem-context-menu');
+    if (menu && !menu.contains(e.target)) {
+      menu.style.display = 'none';
+    }
+  });
+
+  function toggleAgeLessThanVisibility() {
+
+    const ageRow = document.getElementById('age-less-than-row');
+    const historyBtn = document.getElementById('show_history');
+    if (ageRow) {
+      if (historyBtn && historyBtn.checked) {
+        ageRow.style.display = 'none';
+      } else {
+        ageRow.style.display = 'flex';
+      }
+    }
+  }
+
+  function resetFilter() {
+    document.getElementById('zbx-filter-form').reset();
+    document.getElementById('show_recent').checked = true;
+    document.getElementById('filter-show-timeline').checked = true;
+    document.getElementById('op_sep').checked = true;
+    Object.keys(selectedFilterMap).forEach(key => {
+      selectedFilterMap[key] = [];
+      renderFilterTags(key);
+    });
+    toggleAgeLessThanVisibility();
+    loadProblems();
+  }
+
+
+
+
+  function handleAutoRefreshChange() {
+    if (refreshTimer) clearInterval(refreshTimer);
+    const sec = parseInt(document.getElementById('auto-refresh-select').value);
+    if (sec > 0) {
+      refreshTimer = setInterval(loadProblems, sec * 1000);
+    }
+  }
+
+  function cleanupModalBackdrops() {
+    document.querySelectorAll('.modal-backdrop').forEach(el => el.remove());
+    document.body.classList.remove('modal-open');
+    document.body.style.overflow = '';
+    document.body.style.paddingRight = '';
+  }
+
+  function showModalSafely(modalId) {
+    const el = document.getElementById(modalId);
+    if (!el) return;
+
+    cleanupModalBackdrops();
+
+    try {
+      if (typeof bootstrap !== 'undefined' && bootstrap.Modal) {
+        const modal = bootstrap.Modal.getOrCreateInstance ? bootstrap.Modal.getOrCreateInstance(el) : new bootstrap.Modal(el);
+        modal.show();
+        return;
+      }
+    } catch (e) {}
+
+    try {
+      if (typeof $ !== 'undefined' && $.fn && $.fn.modal) {
+        $(el).modal('show');
+        return;
+      }
+    } catch (e) {}
+
+    // Pure JS Fallback
+    el.classList.add('show');
+    el.style.display = 'block';
+    el.removeAttribute('aria-hidden');
+    const bd = document.createElement('div');
+    bd.className = 'modal-backdrop fade show zbx-created-backdrop';
+    bd.onclick = function() { hideModalSafely(modalId); };
+    document.body.appendChild(bd);
+    document.body.classList.add('modal-open');
+  }
+
+  function hideModalSafely(modalId) {
+    const el = document.getElementById(modalId);
+    if (el) {
+      try {
+        if (typeof bootstrap !== 'undefined' && bootstrap.Modal) {
+          const modal = bootstrap.Modal.getInstance ? bootstrap.Modal.getInstance(el) : null;
+          if (modal) modal.hide();
+        }
+      } catch (e) {}
+
+      try {
+        if (typeof $ !== 'undefined' && $.fn && $.fn.modal) {
+          $(el).modal('hide');
+        }
+      } catch (e) {}
+
+      el.classList.remove('show');
+      el.style.display = 'none';
+      el.setAttribute('aria-hidden', 'true');
+    }
+    setTimeout(cleanupModalBackdrops, 150);
+  }
+
+
+  // Multi-select state storage
+  const selectedFilterMap = {
+    'filter-hostgroup': [],
+    'filter-host': [],
+    'filter-app': [],
+    'filter-trigger': []
+  };
+
+  function getSelectedList(inputId) {
+    const list = [...(selectedFilterMap[inputId] || [])];
+    const directVal = (document.getElementById(inputId)?.value || '').trim();
+    if (directVal && !list.includes(directVal)) {
+      list.push(directVal);
+    }
+    return list;
+  }
+
+  function renderFilterTags(inputId) {
+    const container = document.getElementById('tags-' + inputId);
+    if (!container) return;
+    const items = selectedFilterMap[inputId] || [];
+    let html = '';
+    items.forEach(val => {
+      html += `
+        <span class="zbx-tag-badge shadow-sm me-1">
+          ${escapeHtml(val)}
+          <span class="zbx-tag-close" onclick="event.stopPropagation(); removeSingleTag('${inputId}', '${escapeHtml(val)}');" title="Remove item">✕</span>
+        </span>
+      `;
+    });
+    container.innerHTML = html;
+  }
+
+  function removeSingleTag(inputId, val) {
+    if (selectedFilterMap[inputId]) {
+      selectedFilterMap[inputId] = selectedFilterMap[inputId].filter(x => x !== val);
+      renderFilterTags(inputId);
+    }
+  }
+
+  function clearFilterField(inputId) {
+    const input = document.getElementById(inputId);
+    if (input) input.value = '';
+    selectedFilterMap[inputId] = [];
+    renderFilterTags(inputId);
+  }
+
+
+
+  function toggleClearBtnVisibility(inputId) {
+    const input = document.getElementById(inputId);
+    const clearBtnId = 'clear-' + inputId.replace('filter-', '');
+    const clearBtn = document.getElementById(clearBtnId);
+    const hasItems = (selectedFilterMap[inputId] && selectedFilterMap[inputId].length > 0) || (input && input.value.trim() !== '');
+    if (clearBtn) {
+      if (hasItems) {
+        clearBtn.style.setProperty('display', 'inline-block', 'important');
+      } else {
+        clearBtn.style.setProperty('display', 'none', 'important');
+      }
+    }
+  }
+
+  let activeSelectionTargetId = '';
+
+  function openSelectionModal(targetType) {
+    const titleEl = document.getElementById('zbxSelectionModalTitle');
+    const container = document.getElementById('zbx-selection-list');
+    const searchInput = document.getElementById('zbx-modal-search');
+    if (searchInput) searchInput.value = '';
+
+    if (container) {
+      container.innerHTML = '<div class="p-3 text-center text-muted"><div class="spinner-border spinner-border-sm me-2"></div>Loading list...</div>';
+    }
+
+    let titleText = 'Select Items';
+    let fetchUrl = '';
+    let presetItems = null;
+
+    if (targetType === 'hostgroups') {
+      titleText = 'Select Host Groups';
+      activeSelectionTargetId = 'filter-hostgroup';
+      fetchUrl = '/plugins/netbox-zabbix/api/hostgroups/';
+    } else if (targetType === 'hosts') {
+      titleText = 'Select Hosts';
+      activeSelectionTargetId = 'filter-host';
+      fetchUrl = '/plugins/netbox-zabbix/api/hosts/';
+    } else if (targetType === 'applications') {
+      titleText = 'Select Application';
+      activeSelectionTargetId = 'filter-app';
+      presetItems = ['CPU', 'Memory', 'Network interfaces', 'Filesystems', 'OS', 'Services', 'Security', 'Zabbix agent', 'Zabbix server', 'Database', 'Status', 'Processes', 'Hardware', 'Storage'];
+    } else if (targetType === 'triggers') {
+      titleText = 'Select Triggers';
+      activeSelectionTargetId = 'filter-trigger';
+      if (currentProblemsData && currentProblemsData.length > 0) {
+        presetItems = Array.from(new Set(currentProblemsData.map(p => p.name).filter(Boolean)));
+      } else {
+        presetItems = ['Zabbix agent is not available', 'HTTP service is down', 'Apache: Failed to fetch status page', 'High CPU utilization', 'High memory utilization', 'Disk space is low'];
+      }
+    }
+
+    const modalFooter = document.querySelector('#zbxSelectionModal .modal-footer');
+    if (modalFooter) {
+      if (targetType === 'applications') {
+        modalFooter.style.setProperty('display', 'none', 'important');
+      } else {
+        modalFooter.style.setProperty('display', 'flex', 'important');
+      }
+    }
+
+    if (titleEl) titleEl.textContent = titleText;
+    showModalSafely('zbxSelectionModal');
+
+    if (presetItems) {
+      renderSelectionList(presetItems);
+    } else if (fetchUrl) {
+      fetch(fetchUrl)
+        .then(res => res.json())
+        .then(data => {
+          const items = data.hostgroups || data.hosts || [];
+          renderSelectionList(items);
+        })
+        .catch(err => {
+          if (container) {
+            container.innerHTML = `<div class="p-3 text-center text-danger">Lỗi nạp dữ liệu: ${escapeHtml(err.message)}</div>`;
+          }
+        });
+    }
+  }
+
+  function renderSelectionList(items) {
+    const container = document.getElementById('zbx-selection-list');
+    if (!container) return;
+    if (!items || items.length === 0) {
+      container.innerHTML = '<div class="p-3 text-center text-muted">No items found</div>';
+      return;
+    }
+
+    if (activeSelectionTargetId === 'filter-app') {
+      let html = '';
+      items.forEach(item => {
+        html += `
+          <button type="button" class="list-group-item list-group-item-action py-2 px-3 small zbx-modal-item text-start" onclick="selectSingleItemValue('${escapeHtml(item)}')">
+            ${escapeHtml(item)}
+          </button>
+        `;
+      });
+      container.innerHTML = html;
+      return;
+    }
+
+    const currentSelected = selectedFilterMap[activeSelectionTargetId] || [];
+    let html = '';
+    items.forEach(item => {
+      const isChecked = currentSelected.includes(item);
+      html += `
+        <label class="list-group-item list-group-item-action py-2 px-3 small d-flex align-items-center zbx-modal-item cursor-pointer">
+          <input class="form-check-input me-2 zbx-modal-chk" type="checkbox" value="${escapeHtml(item)}" ${isChecked ? 'checked' : ''}>
+          <span>${escapeHtml(item)}</span>
+        </label>
+      `;
+    });
+    container.innerHTML = html;
+  }
+
+  function selectSingleItemValue(val) {
+    const input = document.getElementById('filter-app');
+    if (input) {
+      input.value = val;
+    }
+    hideModalSafely('zbxSelectionModal');
+  }
+
+
+  function toggleSelectAllModalItems(selectState) {
+    document.querySelectorAll('.zbx-modal-chk').forEach(c => {
+      if (c.closest('.zbx-modal-item').style.display !== 'none') {
+        c.checked = selectState;
+      }
+    });
+  }
+
+  function applyModalMultiSelection() {
+    const selected = [];
+    document.querySelectorAll('.zbx-modal-chk:checked').forEach(c => {
+      selected.push(c.value);
+    });
+    if (activeSelectionTargetId) {
+      selectedFilterMap[activeSelectionTargetId] = selected;
+      renderFilterTags(activeSelectionTargetId);
+    }
+    hideModalSafely('zbxSelectionModal');
+  }
+
+
+
+
+
+
+  function openAckModal(eventId, problemName) {
+    document.getElementById('ack-event-id').value = eventId;
+    document.getElementById('ack-problem-name').textContent = problemName;
+    document.getElementById('ack-message').value = '';
+    const modal = new bootstrap.Modal(document.getElementById('ackModal'));
+    modal.show();
+  }
+
+  function submitAcknowledge() {
+    const eventId = document.getElementById('ack-event-id').value;
+    const msg = document.getElementById('ack-message').value.trim();
+    const closeChk = document.getElementById('ack-close-chk').checked;
+
+    fetch('/plugins/netbox-zabbix/api/acknowledge/', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        eventids: [eventId],
+        message: msg || 'Acknowledged from NetBox UI',
+        action: closeChk ? 6 : 2
+      })
+    })
+    .then(res => res.json())
+    .then(data => {
+      const modalEl = document.getElementById('ackModal');
+      const modal = bootstrap.Modal.getInstance(modalEl);
+      if (modal) modal.hide();
+      loadProblems();
+    })
+    .catch(err => {
+      alert('Lỗi xác nhận sự cố: ' + err.message);
+    });
+  }
+
+  function exportToCSV() {
+    if (!currentProblemsData || currentProblemsData.length === 0) {
+      alert('Không có dữ liệu sự cố để xuất CSV');
+      return;
+    }
+    let csv = 'Time,Severity,Status,Host,Problem,Duration,Acknowledged,Tags\n';
+    currentProblemsData.forEach(p => {
+      const sev = (SEVERITY_MAP[p.severity] || SEVERITY_MAP[0]).name;
+      const status = p.r_clock ? 'RESOLVED' : 'PROBLEM';
+      const time = formatTimestamp(p.clock);
+      const host = p.host_name || p.host;
+      const prob = `"${(p.name || '').replace(/"/g, '""')}"`;
+      const dur = formatDuration(p.clock, p.r_clock);
+      const ack = p.acknowledged ? 'Yes' : 'No';
+      const tagStr = `"${(p.tags || []).map(t => `${t.tag}:${t.value}`).join('; ')}"`;
+      csv += `${time},${sev},${status},"${host}",${prob},${dur},${ack},${tagStr}\n`;
+    });
+
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.setAttribute('download', `zabbix_problems_${Date.now()}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  }
+
+  document.addEventListener('DOMContentLoaded', function() {
+    toggleAgeLessThanVisibility();
+    ['filter-hostgroup', 'filter-host', 'filter-app', 'filter-trigger', 'filter-problem'].forEach(id => {
+      toggleClearBtnVisibility(id);
+    });
+    loadProblems();
+    handleAutoRefreshChange();
+
+
+    // Guarantee backdrop cleanup when modal hides (e.g. clicking outside or ESC)
+    ['zbxSelectionModal', 'ackModal'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) {
+        el.addEventListener('hidden.bs.modal', function () {
+          cleanupModalBackdrops();
+        });
+        el.addEventListener('click', function (e) {
+          if (e.target === el) {
+            hideModalSafely(id);
+          }
+        });
+      }
+    });
+
+    // Show type change listener (Recent problems / Problems / History)
+
+    document.querySelectorAll('input[name="show_type"]').forEach(el => {
+      el.addEventListener('change', function() {
+        toggleAgeLessThanVisibility();
+        loadProblems();
+      });
+    });
+
+    // Attach real-time filter change listeners
+    ['filter-unack-only', 'filter-show-timeline', 'filter-compact-view', 'filter-highlight-row', 'filter-show-details', 'filter-suppressed', 'filter-age-chk'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) {
+        el.addEventListener('change', function() {
+          renderProblemsTable(currentProblemsData);
+        });
+      }
+    });
+
+    document.querySelectorAll('input[name="opdata_fmt"]').forEach(el => {
+      el.addEventListener('change', function() {
+        renderProblemsTable(currentProblemsData);
+      });
+    });
+
+    // Select all checkbox handler
+    const selectAll = document.getElementById('select-all-chk');
+    if (selectAll) {
+      selectAll.addEventListener('change', function() {
+        document.querySelectorAll('.problem-select-chk').forEach(c => c.checked = selectAll.checked);
+      });
+    }
+  });
+</script>
+{% endblock %}

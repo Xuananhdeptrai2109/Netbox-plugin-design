@@ -1,0 +1,131 @@
+<div class="card shadow-sm h-100 mb-0">
+  <!-- Clean Header -->
+  <div class="card-header d-flex justify-content-between align-items-center py-2 px-3 bg-body border-bottom">
+    <h6 class="card-title m-0 d-flex align-items-center gap-2 fw-bold text-body">
+      <i class="mdi mdi-alert-circle-outline text-danger fs-5"></i> Zabbix Active Problems
+    </h6>
+    <span id="widget-problems-count" class="badge bg-secondary">0 problems</span>
+  </div>
+
+  <!-- Scrollable Container (Only 1 "Xem thêm" at the end of scrollable list) -->
+  <div class="card-body p-0" id="widget-scroll-container" style="max-height: 420px; overflow-y: auto;">
+    <table class="table table-hover zbx-widget-table mb-0" id="widget-problems-table">
+      <thead class="table-light sticky-top">
+        <tr>
+          <th style="width: 110px;" class="text-center">Severity</th>
+          <th style="width: 140px;">Host</th>
+          <th>Problem</th>
+          <th style="width: 90px;">Duration</th>
+          <th style="width: 50px;" class="text-center">Ack</th>
+        </tr>
+      </thead>
+      <tbody id="widget-problems-tbody">
+        <tr>
+          <td colspan="5" class="text-center py-4 text-muted">
+            <div class="spinner-border spinner-border-sm me-2"></div> Loading active problems...
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<style>
+  .zbx-w-sev-5 { background-color: #E60000 !important; color: #ffffff !important; font-weight: bold; }
+  .zbx-w-sev-4 { background-color: #E97659 !important; color: #ffffff !important; font-weight: bold; }
+  .zbx-w-sev-3 { background-color: #FFA059 !important; color: #212529 !important; font-weight: bold; }
+  .zbx-w-sev-2 { background-color: #FFC859 !important; color: #212529 !important; font-weight: bold; }
+  .zbx-w-sev-1 { background-color: #7499FF !important; color: #ffffff !important; font-weight: bold; }
+  .zbx-w-sev-0 { background-color: #97AAB3 !important; color: #ffffff !important; font-weight: bold; }
+
+  .zbx-load-more-row td {
+    background-color: var(--bs-tertiary-bg, rgba(0,0,0,0.03)) !important;
+    border-top: 2px solid var(--bs-border-color, #dee2e6) !important;
+  }
+</style>
+
+<script>
+  (function() {
+    const W_SEVERITY_MAP = {
+      0: { name: 'Not classified', class: 'zbx-w-sev-0' },
+      1: { name: 'Information', class: 'zbx-w-sev-1' },
+      2: { name: 'Warning', class: 'zbx-w-sev-2' },
+      3: { name: 'Average', class: 'zbx-w-sev-3' },
+      4: { name: 'High', class: 'zbx-w-sev-4' },
+      5: { name: 'Disaster', class: 'zbx-w-sev-5' },
+    };
+
+    function formatWDuration(clock, r_clock) {
+      if (!clock) return '';
+      const end = (r_clock && r_clock > 0) ? r_clock : Math.floor(Date.now() / 1000);
+      let diff = end - clock;
+      if (diff < 0) diff = 0;
+      const days = Math.floor(diff / 86400);
+      diff %= 86400;
+      const hours = Math.floor(diff / 3600);
+      diff %= 3600;
+      const minutes = Math.floor(diff / 60);
+      if (days > 0) return `${days}d ${hours}h`;
+      if (hours > 0) return `${hours}h ${minutes}m`;
+      return `${minutes}m`;
+    }
+
+    function loadWidgetProblems() {
+      fetch('/plugins/netbox-zabbix/api/problems/?recent=true')
+        .then(res => res.json())
+        .then(data => {
+          const tbody = document.getElementById('widget-problems-tbody');
+          const countBadge = document.getElementById('widget-problems-count');
+          if (!tbody) return;
+
+          const problems = data.problems || [];
+          if (countBadge) countBadge.textContent = `${problems.length} problems`;
+
+          if (problems.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="5" class="text-center py-4 text-success fw-bold"><i class="mdi mdi-check-circle me-1"></i> Không có sự cố nào (No active problems)</td></tr>';
+            return;
+          }
+
+          let html = '';
+          problems.slice(0, 15).forEach(p => {
+            const sev = W_SEVERITY_MAP[p.severity] || W_SEVERITY_MAP[0];
+            const dur = formatWDuration(p.clock, p.r_clock);
+            let hostHtml = p.host_name || p.host;
+            if (p.netbox_device_id) {
+              hostHtml = `<a href="/dcim/devices/${p.netbox_device_id}/" class="fw-bold text-decoration-none">${p.host_name || p.host}</a>`;
+            }
+            const ackHtml = p.acknowledged ? '<span class="badge bg-success">Yes</span>' : '<span class="badge bg-danger">No</span>';
+            html += `
+              <tr>
+                <td class="${sev.class} text-center py-1 px-2 small">${sev.name}</td>
+                <td class="py-1 px-2 small text-nowrap">${hostHtml}</td>
+                <td class="py-1 px-2 small fw-bold">${p.name}</td>
+                <td class="py-1 px-2 small text-nowrap font-monospace">${dur}</td>
+                <td class="py-1 px-2 small text-center">${ackHtml}</td>
+              </tr>
+            `;
+          });
+
+          // Single "Xem thêm" row at the end of the scrollable list
+          html += `
+            <tr class="zbx-load-more-row">
+              <td colspan="5" class="text-center py-3">
+                <a href="/plugins/netbox-zabbix/problems/" class="btn btn-sm btn-outline-primary fw-bold text-decoration-none px-4">
+                  <i class="mdi mdi-view-list me-1"></i> Xem thêm tất cả sự cố <i class="mdi mdi-arrow-right ms-1"></i>
+                </a>
+              </td>
+            </tr>
+          `;
+
+          tbody.innerHTML = html;
+        })
+        .catch(err => {
+          const tbody = document.getElementById('widget-problems-tbody');
+          if (tbody) tbody.innerHTML = `<tr><td colspan="5" class="text-center py-3 text-danger small">Lỗi nạp Widget: ${err.message}</td></tr>`;
+        });
+    }
+
+    document.addEventListener('DOMContentLoaded', loadWidgetProblems);
+    setInterval(loadWidgetProblems, 15000);
+  })();
+</script>
