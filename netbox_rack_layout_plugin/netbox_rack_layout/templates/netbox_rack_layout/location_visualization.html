@@ -597,11 +597,19 @@
     <div class="rl-main">
         <!-- TOOLBAR -->
         <div class="rl-toolbar">
-            <div class="rl-toolbar-group" id="rl-nav-group" style="display: none;">
+            <div class="rl-toolbar-group" id="rl-nav-group" style="display: none; align-items: center;">
                 <button class="rl-btn" id="rl-back-btn" style="background: rgba(108, 99, 255, 0.15); border-color: var(--rl-accent); color: var(--rl-text);">
                     ⬅ Quay lại Mặt bằng
                 </button>
                 <span id="rl-breadcrumb" style="font-size: 13px; font-weight: 600; color: var(--rl-text-muted); margin-left: 8px;"></span>
+                <div id="rl-wall-size-controls" style="display: inline-flex; align-items: center; gap: 6px; margin-left: 14px;">
+                    <span style="font-size: 12px; color: var(--rl-text-muted);">Dài:</span>
+                    <input type="number" id="rl-wall-len-input" min="60" step="10" class="rl-grid-select" style="width: 75px; padding: 2px 6px;">
+                    <span style="font-size: 12px; color: var(--rl-text-muted);">px</span>
+                    <span style="font-size: 12px; color: var(--rl-text-muted); margin-left: 8px;">Cao:</span>
+                    <input type="number" id="rl-wall-h-input" min="60" step="10" class="rl-grid-select" style="width: 75px; padding: 2px 6px;">
+                    <span style="font-size: 12px; color: var(--rl-text-muted);">px</span>
+                </div>
             </div>
             <div class="rl-toolbar-divider" id="rl-nav-divider" style="display: none;"></div>
             <div class="rl-toolbar-group">
@@ -729,6 +737,8 @@
         const backBtn = document.getElementById('rl-back-btn');
         const breadcrumbEl = document.getElementById('rl-breadcrumb');
         const navDividerEl = document.getElementById('rl-nav-divider');
+        const wallLenInput = document.getElementById('rl-wall-len-input');
+        const wallHInput = document.getElementById('rl-wall-h-input');
         // ===== KONVA STAGE =====
         const stageContainer = document.getElementById('rl-stage-container');
         const canvasContainer = document.getElementById('rl-canvas-container');
@@ -1111,8 +1121,9 @@
                         wallType: wt,
                         customWidth: obj.width || 0,
                         customHeight: obj.height || 0,
+                        wallElevationHeight: obj.z_index || 240,
                     };
-                    addWallToCanvas(wallItem, obj.x, obj.y, obj.rotation, obj.z_index);
+                    addWallToCanvas(wallItem, obj.x, obj.y, obj.rotation, obj.z_index || 240);
                     if (obj.object_id > wallCounter) wallCounter = obj.object_id;
                 }
             });
@@ -1666,6 +1677,7 @@
             let width = wallInfo.customWidth || (isVertical ? wallThickness : wallLength);
             let height = wallInfo.customHeight || (isVertical ? wallLength : wallThickness);
             const wallNumber = wallInfo.id;
+            const elevationHeight = wallInfo.wallElevationHeight || zIndex || 240;
 
             const group = new Konva.Group({
                 x, y, rotation, draggable: true, name: 'layout-object',
@@ -1678,7 +1690,8 @@
             group.setAttr('wallType', wt);
             group.setAttr('wallWidth', width);
             group.setAttr('wallHeight', height);
-            group.setAttr('zIndex', zIndex);
+            group.setAttr('wallElevationHeight', elevationHeight);
+            group.setAttr('zIndex', elevationHeight);
             group.setAttr('baseX', x);
             group.setAttr('baseY', y);
 
@@ -2056,13 +2069,17 @@
             const objType = node.getAttr('objectType');
             const isWall = (objType === 'wall');
             const isAsset = (objType === 'asset');
-            transformer.resizeEnabled(isWall || isAsset);
-            transformer.rotateEnabled(!isWall && currentViewMode !== 'wall');
+            const isWallElevation = (objType === 'wall_elevation');
+
+            transformer.resizeEnabled(isWall || isAsset || isWallElevation);
+            transformer.rotateEnabled(!isWall && !isWallElevation && currentViewMode !== 'wall');
 
             if (isWall) {
                 const wt = node.getAttr('wallType');
                 if (wt === 'v') transformer.enabledAnchors(['top-center', 'bottom-center']);
                 else transformer.enabledAnchors(['middle-left', 'middle-right']);
+            } else if (isWallElevation) {
+                transformer.enabledAnchors(['top-left', 'top-center', 'top-right', 'middle-right', 'bottom-right', 'bottom-center', 'bottom-left', 'middle-left']);
             } else if (isAsset) {
                 transformer.enabledAnchors(['top-left', 'top-center', 'top-right', 'middle-right', 'bottom-right', 'bottom-center', 'bottom-left', 'middle-left']);
             } else {
@@ -2152,6 +2169,7 @@
                     if (objType === 'wall') {
                         entry.width = Math.round((group.getAttr('wallWidth') || 0) * 100) / 100;
                         entry.height = Math.round((group.getAttr('wallHeight') || 0) * 100) / 100;
+                        entry.z_index = Math.round(group.getAttr('wallElevationHeight') || group.getAttr('zIndex') || 240);
                     } else if (objType === 'asset') {
                         entry.width = Math.round((group.getAttr('assetWidth') || 0) * 100) / 100;
                         entry.height = Math.round((group.getAttr('assetHeight') || 0) * 100) / 100;
@@ -2196,6 +2214,20 @@
                         }
                     });
                     wallAssetsMap.set(activeWallId, wallAssets);
+
+                    // Đồng bộ kích thước bức tường đang sửa vào danh sách floorPlanObjects
+                    const currentWallLen = wallBgGroup.getAttr('wallLength');
+                    const currentWallH = wallBgGroup.getAttr('wallHeight');
+                    const wallInFloor = floorPlanObjects.find(o => o.object_type === 'wall' && o.object_id === activeWallId);
+                    if (wallInFloor && currentWallLen) {
+                        const isV = (wallInFloor.height > wallInFloor.width);
+                        if (isV) {
+                            wallInFloor.height = currentWallLen;
+                        } else {
+                            wallInFloor.width = currentWallLen;
+                        }
+                        wallInFloor.z_index = currentWallH || 240;
+                    }
                 }
 
                 // 2. Gather from floorPlanObjects (which has floor items and other wall assets)
@@ -2304,6 +2336,20 @@
                     }
                 });
                 wallAssetsMap.set(activeWallId, wallAssets);
+
+                // Đồng bộ kích thước bức tường đang sửa vào danh sách floorPlanObjects
+                const currentWallLen = wallBgGroup.getAttr('wallLength');
+                const currentWallH = wallBgGroup.getAttr('wallHeight');
+                const wallInFloor = floorPlanObjects.find(o => o.object_type === 'wall' && o.object_id === activeWallId);
+                if (wallInFloor && currentWallLen) {
+                    const isV = (wallInFloor.height > wallInFloor.width);
+                    if (isV) {
+                        wallInFloor.height = currentWallLen;
+                    } else {
+                        wallInFloor.width = currentWallLen;
+                    }
+                    wallInFloor.z_index = currentWallH || 240;
+                }
             }
 
             const savedObjects = getCurrentLayoutObjects();
@@ -2325,14 +2371,17 @@
         // ===== RENDER WALL CANVAS =====
         function renderWallCanvas(wallGroup) {
             const isV = (wallGroup.getAttr('wallType') === 'v' || wallGroup.getAttr('wallHeight') > wallGroup.getAttr('wallWidth'));
-            const wallLength = isV ? (wallGroup.getAttr('wallHeight') || 160) : (wallGroup.getAttr('wallWidth') || 160);
-            const wallHeight = 240;
+            let wallLength = isV ? (wallGroup.getAttr('wallHeight') || 160) : (wallGroup.getAttr('wallWidth') || 160);
+            let wallHeight = wallGroup.getAttr('wallElevationHeight') || wallGroup.getAttr('zIndex') || 240;
 
             const wallBgGroup = new Konva.Group({
                 x: snapValue((stageWidth - wallLength) / 2),
                 y: snapValue((stageHeight - wallHeight) / 2),
                 name: 'wall-bg-group'
             });
+            wallBgGroup.setAttr('objectType', 'wall_elevation');
+            wallBgGroup.setAttr('wallLength', wallLength);
+            wallBgGroup.setAttr('wallHeight', wallHeight);
 
             const wallBgRect = new Konva.Rect({
                 width: wallLength,
@@ -2350,29 +2399,165 @@
                 clipY: 0,
                 clipWidth: wallLength,
                 clipHeight: wallHeight,
-                listening: false
+                listening: false,
+                name: 'wall-pg'
             });
-            for (let xOffset = -wallHeight; xOffset < wallLength; xOffset += hatchSpacing) {
-                pg.add(new Konva.Line({
-                    points: [xOffset, wallHeight, xOffset + wallHeight, 0],
-                    stroke: 'rgba(255, 255, 255, 0.03)',
-                    strokeWidth: 2,
-                    listening: false
-                }));
+
+            function rebuildHatchLines(w, h) {
+                pg.destroyChildren();
+                pg.clipWidth(w);
+                pg.clipHeight(h);
+                for (let xOffset = -h; xOffset < w; xOffset += hatchSpacing) {
+                    pg.add(new Konva.Line({
+                        points: [xOffset, h, xOffset + h, 0],
+                        stroke: 'rgba(255, 255, 255, 0.03)',
+                        strokeWidth: 2,
+                        listening: false
+                    }));
+                }
             }
+            rebuildHatchLines(wallLength, wallHeight);
 
             const wallLabel = new Konva.Text({
-                text: `Mặt đứng bức tường W${activeWallId} (${wallLength}px x ${wallHeight}px)`,
+                text: `Mặt đứng bức tường W${activeWallId} (${Math.round(wallLength)}px x ${Math.round(wallHeight)}px)`,
                 x: 15,
                 y: 15,
                 fontSize: 12,
                 fontFamily: 'Inter, sans-serif',
-                fill: 'rgba(255, 255, 255, 0.25)',
-                fontStyle: 'bold'
+                fill: 'rgba(255, 255, 255, 0.4)',
+                fontStyle: 'bold',
+                name: 'wall-label'
             });
 
             wallBgGroup.add(wallBgRect, pg, wallLabel);
             mainLayer.add(wallBgGroup);
+
+            // Hàm cập nhật kích thước bức tường linh hoạt
+            function updateWallElevationSize(newW, newH, fromInput = false) {
+                newW = Math.max(60, Math.round(newW));
+                newH = Math.max(60, Math.round(newH));
+
+                wallBgGroup.setAttr('wallLength', newW);
+                wallBgGroup.setAttr('wallHeight', newH);
+
+                wallBgRect.width(newW);
+                wallBgRect.height(newH);
+
+                rebuildHatchLines(newW, newH);
+
+                wallLabel.text(`Mặt đứng bức tường W${activeWallId} (${newW}px x ${newH}px)`);
+
+                if (!fromInput) {
+                    if (wallLenInput) wallLenInput.value = newW;
+                    if (wallHInput) wallHInput.value = newH;
+                }
+
+                // Cập nhật giá trị vào wallGroup gốc
+                wallGroup.setAttr('wallElevationHeight', newH);
+                wallGroup.setAttr('zIndex', newH);
+                if (isV) {
+                    wallGroup.setAttr('wallHeight', newW);
+                } else {
+                    wallGroup.setAttr('wallWidth', newW);
+                }
+
+                // Giữ các Asset không bị tràn ra ngoài khi tường bị thu hẹp
+                wallBgGroup.find('.layout-object').forEach(ag => {
+                    const aw = ag.getAttr('assetWidth') || 110;
+                    const ah = ag.getAttr('assetHeight') || 70;
+                    let curX = ag.x();
+                    let curY = ag.y();
+                    if (curX + aw > newW) curX = Math.max(0, newW - aw);
+                    if (curY + ah > newH) curY = Math.max(0, newH - ah);
+                    ag.position({ x: curX, y: curY });
+                });
+
+                if (wallAssetsMap.has(activeWallId)) {
+                    wallAssetsMap.get(activeWallId).forEach(a => {
+                        const aw = a.width || 110;
+                        const ah = a.height || 70;
+                        if (a.x + aw > newW) a.x = Math.max(0, newW - aw);
+                        if (a.y + ah > newH) a.y = Math.max(0, newH - ah);
+                    });
+                }
+
+                mainLayer.batchDraw();
+            }
+
+            // Gán sự kiện click chọn bức tường để hiển thị khung neo kéo (Transformer)
+            wallBgGroup.on('click tap', (e) => {
+                if (e.target === wallBgRect || e.target === wallLabel || e.target.getParent() === pg) {
+                    selectNode(wallBgGroup);
+                }
+            });
+
+            // Gắn sự kiện kéo co giãn bằng Transformer
+            wallBgGroup.on('transform', () => {
+                const scaleX = wallBgGroup.scaleX();
+                const scaleY = wallBgGroup.scaleY();
+                let currentW = wallBgGroup.getAttr('wallLength');
+                let currentH = wallBgGroup.getAttr('wallHeight');
+
+                let newW = Math.max(60, Math.round(currentW * scaleX));
+                let newH = Math.max(60, Math.round(currentH * scaleY));
+
+                if (snapToGrid) {
+                    newW = snapValue(newW);
+                    newH = snapValue(newH);
+                }
+
+                wallBgGroup.scale({ x: 1, y: 1 });
+                updateWallElevationSize(newW, newH);
+            });
+
+            wallBgGroup.on('transformend', () => {
+                const scaleX = wallBgGroup.scaleX();
+                const scaleY = wallBgGroup.scaleY();
+                let currentW = wallBgGroup.getAttr('wallLength');
+                let currentH = wallBgGroup.getAttr('wallHeight');
+
+                let newW = Math.max(60, Math.round(currentW * scaleX));
+                let newH = Math.max(60, Math.round(currentH * scaleY));
+
+                if (snapToGrid) {
+                    newW = snapValue(newW);
+                    newH = snapValue(newH);
+                }
+
+                wallBgGroup.scale({ x: 1, y: 1 });
+                updateWallElevationSize(newW, newH);
+                transformer.nodes([wallBgGroup]);
+                mainLayer.batchDraw();
+            });
+
+            // Gắn sự kiện cho ô nhập kích thước trên thanh Toolbar
+            if (wallLenInput) {
+                wallLenInput.value = Math.round(wallLength);
+                wallLenInput.onchange = () => {
+                    let val = parseInt(wallLenInput.value, 10);
+                    if (val && val >= 60) {
+                        if (snapToGrid) val = snapValue(val);
+                        wallLenInput.value = val;
+                        updateWallElevationSize(val, wallBgGroup.getAttr('wallHeight'), true);
+                        transformer.nodes([wallBgGroup]);
+                    }
+                };
+            }
+            if (wallHInput) {
+                wallHInput.value = Math.round(wallHeight);
+                wallHInput.onchange = () => {
+                    let val = parseInt(wallHInput.value, 10);
+                    if (val && val >= 60) {
+                        if (snapToGrid) val = snapValue(val);
+                        wallHInput.value = val;
+                        updateWallElevationSize(wallBgGroup.getAttr('wallLength'), val, true);
+                        transformer.nodes([wallBgGroup]);
+                    }
+                };
+            }
+
+            // Tự động chọn bức tường khi vừa mở giao diện để người dùng thấy ngay các điểm neo kéo
+            selectNode(wallBgGroup);
 
             // Add assets that are currently on this wall
             if (wallAssetsMap.has(activeWallId)) {
