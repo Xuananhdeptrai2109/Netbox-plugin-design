@@ -979,12 +979,14 @@
             resizeEnabled: false,
             rotationSnaps: [0, 45, 90, 135, 180, 225, 270, 315],
             borderStroke: '#6c63ff',
-            borderStrokeWidth: 2,
+            borderStrokeWidth: 1.5,
             anchorStroke: '#6c63ff',
             anchorFill: '#fff',
-            anchorSize: 8,
-            // Keep aspect ratio off so walls can be freely resized
+            anchorSize: 7,
+            anchorCornerRadius: 2,
             keepRatio: false,
+            ignoreStroke: true,
+            padding: 0,
             boundBoxFunc: (oldBox, newBox) => {
                 // Minimum wall size
                 if (Math.abs(newBox.width) < 10) newBox.width = 10 * Math.sign(newBox.width) || 10;
@@ -2070,27 +2072,49 @@
             group.setAttr('baseX', x);
             group.setAttr('baseY', y);
 
+            // Return exact mathematical bounding box matching wall dimensions
+            group.getClientRect = function (config) {
+                const w = this.getAttr('wallWidth') || width;
+                const h = this.getAttr('wallHeight') || height;
+                if (config && config.skipTransform) {
+                    return { x: 0, y: 0, width: w, height: h };
+                }
+                const relativeTo = config && config.relativeTo;
+                const transform = this.getAbsoluteTransform(relativeTo);
+                const p1 = transform.point({ x: 0, y: 0 });
+                const p2 = transform.point({ x: w, y: 0 });
+                const p3 = transform.point({ x: w, y: h });
+                const p4 = transform.point({ x: 0, y: h });
+                const minX = Math.min(p1.x, p2.x, p3.x, p4.x);
+                const maxX = Math.max(p1.x, p2.x, p3.x, p4.x);
+                const minY = Math.min(p1.y, p2.y, p3.y, p4.y);
+                const maxY = Math.max(p1.y, p2.y, p3.y, p4.y);
+                return {
+                    x: minX,
+                    y: minY,
+                    width: maxX - minX,
+                    height: maxY - minY
+                };
+            };
+
             // Helper to build wall internal shapes
             function buildWallShapes(w, h) {
-                // Remove old children except the group itself
                 group.destroyChildren();
 
-                // Sleek Shadow
+                // Premium Dark Architecture Body (flush with 0, 0, w, h)
                 group.add(new Konva.Rect({
-                    width: w, height: h,
-                    fill: 'rgba(0,0,0,0.3)', cornerRadius: 3,
-                    x: 3, y: 3,
-                }));
-
-                // Premium Dark Architecture Body
-                group.add(new Konva.Rect({
-                    width: w, height: h,
-                    fill: '#1b202e', stroke: '#4b5563', // Modern dark slate with high-tech outline
-                    strokeWidth: 2, cornerRadius: 3,
+                    x: 0,
+                    y: 0,
+                    width: w,
+                    height: h,
+                    fill: '#1b202e',
+                    stroke: '#4b5563',
+                    strokeWidth: 1.5,
+                    cornerRadius: 3,
                     name: 'wall-body',
                 }));
 
-                // Professional Diagonal Hatching (Clipped to wall boundaries)
+                // Professional Diagonal Hatching (strictly clamped inside [0, w] x [0, h])
                 const pg = new Konva.Group({
                     clipX: 0,
                     clipY: 0,
@@ -2099,21 +2123,14 @@
                     listening: false
                 });
                 const hatchSpacing = 16;
-                if (h > w) {
-                    // Vertical style hatching
-                    for (let yOffset = -w; yOffset < h; yOffset += hatchSpacing) {
+                for (let C = hatchSpacing; C < w + h; C += hatchSpacing) {
+                    const x1 = Math.max(0, C - h);
+                    const y1 = C - x1;
+                    const y2 = Math.max(0, C - w);
+                    const x2 = C - y2;
+                    if (x1 < x2) {
                         pg.add(new Konva.Line({
-                            points: [0, yOffset + w, w, yOffset],
-                            stroke: 'rgba(255, 255, 255, 0.08)',
-                            strokeWidth: 1.5,
-                            listening: false
-                        }));
-                    }
-                } else {
-                    // Horizontal style hatching
-                    for (let xOffset = -h; xOffset < w; xOffset += hatchSpacing) {
-                        pg.add(new Konva.Line({
-                            points: [xOffset, h, xOffset + h, 0],
+                            points: [x1, y1, x2, y2],
                             stroke: 'rgba(255, 255, 255, 0.08)',
                             strokeWidth: 1.5,
                             listening: false
@@ -2125,12 +2142,17 @@
                 // Thin Clean Number label
                 group.add(new Konva.Text({
                     text: `W${wallNumber}`,
-                    x: 0, y: 0, width: w, height: h,
+                    x: 0,
+                    y: 0,
+                    width: w,
+                    height: h,
                     fontSize: Math.min(w, h) < 14 ? 8 : 10,
-                    fontFamily: 'Inter, sans-serif', fontStyle: 'bold',
-                    fill: 'rgba(255, 255, 255, 0.6)', align: 'center', verticalAlign: 'middle',
-                    shadowColor: 'rgba(0,0,0,0.6)', shadowBlur: 2,
-                    shadowOffset: { x: 0.5, y: 0.5 }, listening: false,
+                    fontFamily: 'Inter, sans-serif',
+                    fontStyle: 'bold',
+                    fill: 'rgba(255, 255, 255, 0.75)',
+                    align: 'center',
+                    verticalAlign: 'middle',
+                    listening: false,
                 }));
             }
 
@@ -2208,6 +2230,9 @@
                 group.setAttr('baseY', group.y());
 
                 buildWallShapes(newW, newH);
+                if (selectedNode === group) {
+                    transformer.forceUpdate();
+                }
                 mainLayer.batchDraw();
             });
 
@@ -2954,6 +2979,8 @@
             transformer.rotateEnabled(!isWall); // Disable rotate for walls, allow for doors/windows/racks/assets
 
             if (isWall) {
+                transformer.padding(0);
+                transformer.ignoreStroke(true);
                 const wt = node.getAttr('wallType');
                 if (wt === 'v') {
                     // Vertical walls only resize height (top/bottom handles)
@@ -2963,8 +2990,12 @@
                     transformer.enabledAnchors(['middle-left', 'middle-right']);
                 }
             } else if (isDoorOrWindow) {
+                transformer.padding(0);
+                transformer.ignoreStroke(true);
                 transformer.enabledAnchors(['middle-left', 'middle-right']);
             } else {
+                transformer.padding(2);
+                transformer.ignoreStroke(false);
                 // Restore default anchors for other objects
                 transformer.enabledAnchors([
                     'top-left', 'top-center', 'top-right',
@@ -2975,6 +3006,7 @@
             }
 
             transformer.nodes([node]);
+            transformer.forceUpdate();
             mainLayer.batchDraw();
         }
 
