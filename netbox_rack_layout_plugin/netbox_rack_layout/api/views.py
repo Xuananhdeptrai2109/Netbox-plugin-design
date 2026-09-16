@@ -121,7 +121,7 @@ class LayoutDetailAPIView(LoginRequiredMixin, View):
                 'created': str(layout.created),
                 'last_updated': str(layout.last_updated),
             }
-            for obj in layout.layout_objects.all():
+            for obj in layout.layout_objects.all().order_by('id'):
                 layout_objects.append({
                     'id': obj.id,
                     'object_type': obj.object_type,
@@ -256,7 +256,7 @@ class SiteLayoutDetailAPIView(LoginRequiredMixin, View):
                 has_layout = True
                 object_count = layout.layout_objects.count()
 
-                for obj in layout.layout_objects.all():
+                for obj in layout.layout_objects.all().order_by('id'):
                     layout_objects.append({
                         'object_type': obj.object_type,
                         'object_id': obj.object_id,
@@ -317,7 +317,7 @@ class SiteLayoutDetailAPIView(LoginRequiredMixin, View):
                 'created': str(layout.created),
                 'last_updated': str(layout.last_updated),
             }
-            for obj in layout.layout_objects.all():
+            for obj in layout.layout_objects.all().order_by('id'):
                 layout_objects.append({
                     'id': obj.id,
                     'object_type': obj.object_type,

@@ -1082,7 +1082,27 @@
             selectedNode = null;
             placedObjects.clear();
 
-            savedObjects.forEach(obj => {
+            // Sắp xếp đối tượng: Tường vẽ trước (lớp dưới cùng), thiết bị/phòng ở giữa, cửa và cửa sổ vẽ sau cùng (luôn nổi trên tường)
+            const typePriority = {
+                'wall': 10,
+                'location': 20,
+                'rack': 30,
+                'asset': 40,
+                'door_1': 50,
+                'door_2': 50,
+                'door_wall': 50,
+                'window_floor': 50,
+                'window_wall': 50,
+                'window_2': 50,
+                'window_4': 50
+            };
+            const sortedObjects = [...savedObjects].sort((a, b) => {
+                const prioA = typePriority[a.object_type] || 35;
+                const prioB = typePriority[b.object_type] || 35;
+                return prioA - prioB;
+            });
+
+            sortedObjects.forEach(obj => {
                 if (obj.parent_type === 'wall' && obj.object_type === 'asset') {
                     // Mark as placed in sidebar list but do not draw on floor stage
                     const key = `${obj.object_type}_${obj.object_id}`;
@@ -1123,6 +1143,14 @@
                 } else if (obj.object_type === 'window_floor' || obj.object_type === 'window_wall' || obj.object_type === 'window_2' || obj.object_type === 'window_4') {
                     addWindowToCanvas(obj.object_type, obj.object_id, obj.x, obj.y, obj.rotation, obj.width, obj.height, obj.parent_id);
                     if (obj.object_id > windowCounter) windowCounter = obj.object_id;
+                }
+            });
+
+            // Đảm bảo tất cả cửa và cửa sổ nằm trên đỉnh lớp vẽ (không bị tường che khuất)
+            mainLayer.find('.layout-object').forEach(group => {
+                const objType = group.getAttr('objectType');
+                if (['door_1', 'door_2', 'door_wall', 'window_floor', 'window_wall', 'window_2', 'window_4'].includes(objType)) {
+                    group.moveToTop();
                 }
             });
 
@@ -1854,6 +1882,7 @@
 
             setupGroupInteractions(group);
             mainLayer.add(group);
+            group.moveToBottom();
             placedObjects.set(key, group);
         }
 
@@ -1890,7 +1919,11 @@
                             const clampedX = Math.max(wx, Math.min(wx + ww - w, gx));
                             const curRot = ((group.rotation() % 360) + 360) % 360;
                             const targetRot = (curRot >= 90 && curRot <= 270) ? 180 : 0;
-                            snapPos = { x: clampedX, y: wy, rot: targetRot };
+                            if (targetRot === 180) {
+                                snapPos = { x: clampedX + w, y: wy + wh, rot: 180 };
+                            } else {
+                                snapPos = { x: clampedX, y: wy, rot: 0 };
+                            }
                         }
                     }
                 } else {
@@ -1902,7 +1935,11 @@
                             const clampedY = Math.max(wy, Math.min(wy + wh - w, gy));
                             const curRot = ((group.rotation() % 360) + 360) % 360;
                             const targetRot = (curRot >= 180) ? 270 : 90;
-                            snapPos = { x: wx, y: clampedY, rot: targetRot };
+                            if (targetRot === 90) {
+                                snapPos = { x: wx + ww, y: clampedY, rot: 90 };
+                            } else {
+                                snapPos = { x: wx, y: clampedY + w, rot: 270 };
+                            }
                         }
                     }
                 }
@@ -1911,12 +1948,17 @@
             if (snappedWall) {
                 group.position({ x: snapPos.x, y: snapPos.y });
                 group.rotation(snapPos.rot);
+                group.setAttr('baseX', snapPos.x);
+                group.setAttr('baseY', snapPos.y);
                 group.setAttr('parentId', snappedWall.getAttr('objectId'));
                 group.setAttr('parentType', 'wall');
             } else {
+                group.setAttr('baseX', group.x());
+                group.setAttr('baseY', group.y());
                 group.setAttr('parentId', null);
                 group.setAttr('parentType', null);
             }
+            group.moveToTop();
         }
 
         // ===== ADD DOOR / WINDOW TO CANVAS (LOCATION FLOOR PLAN) =====
@@ -1978,9 +2020,10 @@
 
                 if (isWindowFloor) {
                     // CỬA SỔ MẶT BẰNG (2D Architectural Window on Floor Plan)
+                    // Nền đặc #0b0f19 che vệt gạch tường bên dưới để kính cửa sổ nổi bật rõ nét trên tường
                     group.add(new Konva.Rect({
                         x: 0, y: 0, width: w, height: h,
-                        fill: 'rgba(6, 182, 212, 0.1)',
+                        fill: '#0b0f19',
                         stroke: '#0891b2', strokeWidth: 1.5,
                         cornerRadius: 1, name: 'window-body'
                     }));
@@ -2030,14 +2073,22 @@
                     }));
                 } else {
                     // CỬA CHÍNH 1 CÁNH (door_1) - Giữ nguyên kiến trúc mở quay
+                    const postW = 8;
+                    const postH = 15;
+
+                    // Khung nền lỗ mở cửa xuyên tường (che vệt tường bên dưới để lộ lối đi kiến trúc thông suốt)
+                    group.add(new Konva.Rect({
+                        x: postW, y: 0, width: Math.max(10, w - postW * 2), height: postH,
+                        fill: '#0b0f19', stroke: 'transparent',
+                        listening: false, name: 'door-opening-cutout'
+                    }));
+
                     group.add(new Konva.Rect({
                         x: 0, y: 0, width: w, height: h,
                         fill: 'rgba(37, 99, 235, 0.05)',
                         name: 'door-hit'
                     }));
 
-                    const postW = 8;
-                    const postH = 15;
                     group.add(new Konva.Rect({
                         x: 0, y: 0, width: postW, height: postH,
                         fill: '#1e293b', stroke: '#3b82f6', strokeWidth: 1.5, cornerRadius: 1
@@ -2087,6 +2138,8 @@
                 group.setAttr('customWidth', newW);
                 buildDoorShapes(newW, group.getAttr('doorHeight'));
                 snapItemToWall(group);
+                group.setAttr('baseX', group.x());
+                group.setAttr('baseY', group.y());
                 if (selectedNode === group) {
                     transformer.forceUpdate();
                 }
@@ -2109,6 +2162,7 @@
 
             setupGroupInteractions(group);
             mainLayer.add(group);
+            group.moveToTop();
             placedObjects.set(key, group);
         }
 
@@ -2168,9 +2222,10 @@
             function buildWindowShapes(w, h) {
                 group.destroyChildren();
 
+                // Nền đặc #0b0f19 che vệt gạch tường bên dưới để kính cửa sổ nổi bật rõ nét trên tường
                 group.add(new Konva.Rect({
                     x: 0, y: 0, width: w, height: h,
-                    fill: 'rgba(6, 182, 212, 0.08)',
+                    fill: '#0b0f19',
                     stroke: '#0891b2', strokeWidth: 1.5,
                     cornerRadius: 1, name: 'window-body'
                 }));
@@ -2236,6 +2291,8 @@
                 group.setAttr('customWidth', newW);
                 buildWindowShapes(newW, group.getAttr('windowHeight'));
                 snapItemToWall(group);
+                group.setAttr('baseX', group.x());
+                group.setAttr('baseY', group.y());
                 if (selectedNode === group) {
                     transformer.forceUpdate();
                 }
@@ -2258,6 +2315,7 @@
 
             setupGroupInteractions(group);
             mainLayer.add(group);
+            group.moveToTop();
             placedObjects.set(key, group);
         }
 
@@ -2699,14 +2757,16 @@
             if (currentViewMode === 'location') {
                 // 1. Floor plan objects currently on stage
                 mainLayer.find('.layout-object').forEach(group => {
-                    const baseX = group.getAttr('baseX') !== undefined ? group.getAttr('baseX') : group.x();
-                    const baseY = group.getAttr('baseY') !== undefined ? group.getAttr('baseY') : group.y();
                     const objType = group.getAttr('objectType');
+                    // Đối với cửa, cửa sổ và tường: luôn lấy trực tiếp tọa độ hiện thời group.x(), group.y() để lưu chính xác
+                    const isHoverable = (objType === 'rack' || objType === 'asset');
+                    const posX = (isHoverable && group.getAttr('baseX') !== undefined) ? group.getAttr('baseX') : group.x();
+                    const posY = (isHoverable && group.getAttr('baseY') !== undefined) ? group.getAttr('baseY') : group.y();
                     const entry = {
                         object_type: objType,
                         object_id: group.getAttr('objectId'),
-                        x: Math.round(baseX * 100) / 100,
-                        y: Math.round(baseY * 100) / 100,
+                        x: Math.round(posX * 100) / 100,
+                        y: Math.round(posY * 100) / 100,
                         rotation: Math.round(group.rotation() * 100) / 100,
                         width: 0,
                         height: 0,
@@ -2819,7 +2879,7 @@
 
                 // 2. Gather from floorPlanObjects (which has floor items and other wall assets)
                 floorPlanObjects.forEach(obj => {
-                    if (obj.parent_type === 'wall' && parseInt(obj.parent_id, 10) === activeWallId) {
+                    if (obj.object_type === 'asset' && obj.parent_type === 'wall' && parseInt(obj.parent_id, 10) === activeWallId) {
                         // Skip the old version of the active wall's assets
                         return;
                     }
@@ -2841,6 +2901,13 @@
                     });
                 }
             }
+
+            // Sắp xếp các đối tượng theo thứ tự: Tường trước, thiết bị ở giữa, cửa/cửa sổ sau cùng để lưu vào database đúng thứ tự lớp
+            const saveOrderMap = {
+                'wall': 10, 'location': 20, 'rack': 30, 'asset': 40,
+                'door_1': 50, 'door_2': 50, 'door_wall': 50, 'window_floor': 50, 'window_wall': 50, 'window_2': 50, 'window_4': 50
+            };
+            objects.sort((a, b) => (saveOrderMap[a.object_type] || 35) - (saveOrderMap[b.object_type] || 35));
             return objects;
         }
 
@@ -2870,6 +2937,15 @@
                 hideLoading();
                 if (resp.ok) {
                     showToast(`Đã lưu thành công! (${objects.length} đối tượng)`, 'success');
+                    // Đảm bảo sau khi lưu, tất cả cửa và cửa sổ luôn nằm trên đỉnh lớp hiển thị
+                    mainLayer.find('.layout-object').forEach(group => {
+                        const objType = group.getAttr('objectType');
+                        if (['door_1', 'door_2', 'door_wall', 'window_floor', 'window_wall', 'window_2', 'window_4'].includes(objType)) {
+                            group.moveToTop();
+                        }
+                    });
+                    if (selectedNode) transformer.moveToTop();
+                    mainLayer.batchDraw();
                 } else {
                     showToast(result.error || 'Lỗi khi lưu', 'error');
                 }
