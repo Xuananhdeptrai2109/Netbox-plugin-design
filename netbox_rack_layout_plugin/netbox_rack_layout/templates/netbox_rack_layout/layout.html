@@ -709,9 +709,6 @@
     <div class="rl-context-item" id="ctx-rotate-cw">↻ Xoay 90° theo chiều kim đồng hồ</div>
     <div class="rl-context-item" id="ctx-rotate-ccw">↺ Xoay 90° ngược chiều</div>
     <div class="rl-context-divider"></div>
-    <div class="rl-context-item" id="ctx-bring-front">⬆ Đưa lên trên cùng</div>
-    <div class="rl-context-item" id="ctx-send-back">⬇ Đưa xuống dưới cùng</div>
-    <div class="rl-context-divider"></div>
     <div class="rl-context-item danger" id="ctx-remove">🗑 Xóa khỏi Layout</div>
 </div>
 
@@ -2661,21 +2658,6 @@
         document.getElementById('ctx-rotate-ccw').addEventListener('click', () => {
             if (selectedNode) {
                 selectedNode.rotation(selectedNode.rotation() - 90);
-                mainLayer.batchDraw();
-            }
-            hideContextMenu();
-        });
-        document.getElementById('ctx-bring-front').addEventListener('click', () => {
-            if (selectedNode) {
-                selectedNode.moveToTop();
-                transformer.moveToTop();
-                mainLayer.batchDraw();
-            }
-            hideContextMenu();
-        });
-        document.getElementById('ctx-send-back').addEventListener('click', () => {
-            if (selectedNode) {
-                selectedNode.moveToBottom();
                 mainLayer.batchDraw();
             }
             hideContextMenu();
