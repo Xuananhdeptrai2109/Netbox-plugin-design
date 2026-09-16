@@ -1117,10 +1117,10 @@
                     };
                     addWallToCanvas(wallItem, obj.x, obj.y, obj.rotation, obj.z_index || 240);
                     if (obj.object_id > wallCounter) wallCounter = obj.object_id;
-                } else if (obj.object_type === 'door_1' || obj.object_type === 'door_2') {
+                } else if (obj.object_type === 'door_1' || obj.object_type === 'door_2' || obj.object_type === 'door_wall') {
                     addDoorToCanvas(obj.object_type, obj.object_id, obj.x, obj.y, obj.rotation, obj.width, obj.height, obj.parent_id);
                     if (obj.object_id > doorCounter) doorCounter = obj.object_id;
-                } else if (obj.object_type === 'window_2' || obj.object_type === 'window_4') {
+                } else if (obj.object_type === 'window_floor' || obj.object_type === 'window_wall' || obj.object_type === 'window_2' || obj.object_type === 'window_4') {
                     addWindowToCanvas(obj.object_type, obj.object_id, obj.x, obj.y, obj.rotation, obj.width, obj.height, obj.parent_id);
                     if (obj.object_id > windowCounter) windowCounter = obj.object_id;
                 }
@@ -1201,10 +1201,10 @@
 
             const genericItems = [
                 { type: 'wall', subType: 'wall', name: 'Tường (🧱)', meta: 'Kéo để thêm tường', icon: '🧱', bg: '#57606f', wallType: 'h' },
-                { type: 'door_1', subType: 'door_1', name: 'Cửa chính 1 cánh (🚪)', meta: 'Cửa đi 1 cánh mở quay', icon: '🚪', bg: '#2563eb' },
-                { type: 'door_2', subType: 'door_2', name: 'Cửa chính 2 cánh (🚪🚪)', meta: 'Cửa đi 2 cánh mở đôi', icon: '🚪', bg: '#1d4ed8' },
-                { type: 'window_2', subType: 'window_2', name: 'Cửa sổ 2 cánh (🪟)', meta: 'Cửa sổ tiêu chuẩn 2 cánh', icon: '🪟', bg: '#0891b2' },
-                { type: 'window_4', subType: 'window_4', name: 'Cửa sổ 4 cánh (🪟🪟)', meta: 'Cửa sổ lớn 4 cánh', icon: '🪟', bg: '#0284c7' },
+                { type: 'door_1', subType: 'door_1', name: 'Cửa chính 1 cánh (🚪)', meta: 'Cửa đi mở quay trên mặt bằng', icon: '🚪', bg: '#2563eb' },
+                { type: 'door_2', subType: 'door_2', name: 'Cửa sổ mặt bằng (🪟)', meta: 'Cửa sổ 2D trên mặt bằng', icon: '🪟', bg: '#0891b2' },
+                { type: 'door_wall', subType: 'door_wall', name: 'Cửa chính trên tường (🚪)', meta: 'Cánh cửa chữ nhật trên tường', icon: '🚪', bg: '#1d4ed8' },
+                { type: 'window_wall', subType: 'window_wall', name: 'Cửa sổ trên tường (🪟)', meta: 'Cửa sổ chữ nhật trên tường', icon: '🪟', bg: '#0284c7' },
             ];
 
             genericItems.forEach(itemDef => {
@@ -1333,8 +1333,8 @@
             const { type, item } = JSON.parse(raw);
 
             // In wall view, we allow dropping assets, doors, and windows
-            const isDoor = (type === 'door_1' || type === 'door_2');
-            const isWindow = (type === 'window_2' || type === 'window_4');
+            const isDoor = (type === 'door_1' || type === 'door_2' || type === 'door_wall');
+            const isWindow = (type === 'window_floor' || type === 'window_wall' || type === 'window_2' || type === 'window_4');
             if (currentViewMode === 'wall' && type !== 'asset' && !isDoor && !isWindow) {
                 showToast('Chỉ có thể đặt Asset, Cửa chính hoặc Cửa sổ lên tường!', 'warning');
                 return;
@@ -1375,9 +1375,9 @@
                     localY = Math.round(localY / gridSize) * gridSize;
                 }
                 
-                if (isDoor) {
+                if (type === 'door_1' || type === 'door_wall') {
                     addDoorToWallCanvas(type, item.id, localX, activeWallId);
-                } else if (isWindow) {
+                } else if (isWindow || type === 'door_2') {
                     addWindowToWallCanvas(type, item.id, localX, localY, activeWallId);
                 } else if (type === 'asset') {
                     localX = Math.max(0, Math.min(wallLength - 110, localX));
@@ -1396,10 +1396,8 @@
                     addAssetToCanvas(item, worldX, worldY, 0, 0);
                 } else if (type === 'wall') {
                     addWallToCanvas(item, worldX, worldY, 0, 0);
-                } else if (isDoor) {
+                } else if (isDoor || isWindow) {
                     addDoorToCanvas(type, item.id, worldX, worldY, 0);
-                } else if (isWindow) {
-                    addWindowToCanvas(type, item.id, worldX, worldY, 0);
                 }
             }
             mainLayer.batchDraw();
@@ -1862,14 +1860,14 @@
         // ===== SNAP DOOR / WINDOW TO WALL =====
         function snapItemToWall(group) {
             const objType = group.getAttr('objectType');
-            const isDoor = (objType === 'door_1' || objType === 'door_2');
-            const isWindow = (objType === 'window_2' || objType === 'window_4');
+            const isDoor = (objType === 'door_1' || objType === 'door_2' || objType === 'door_wall');
+            const isWindow = (objType === 'window_floor' || objType === 'window_wall' || objType === 'window_2' || objType === 'window_4');
             if (!isDoor && !isWindow) return;
 
-            const w = group.getAttr('customWidth') || (objType === 'door_1' ? 50 : (objType === 'door_2' ? 90 : (objType === 'window_2' ? 80 : 140)));
+            const w = group.getAttr('customWidth') || group.getAttr('doorWidth') || group.getAttr('windowWidth') || 50;
             const gx = group.x();
             const gy = group.y();
-            const snapThreshold = 30;
+            const snapThreshold = 35;
 
             let snappedWall = null;
             let bestDist = Infinity;
@@ -1885,22 +1883,26 @@
 
                 if (wt === 'h') {
                     const distY = Math.abs(gy - wy);
-                    if (distY < snapThreshold && gx + w >= wx - 15 && gx <= wx + ww + 15) {
+                    if (distY < snapThreshold && gx + w >= wx - 20 && gx <= wx + ww + 20) {
                         if (distY < bestDist) {
                             bestDist = distY;
                             snappedWall = other;
                             const clampedX = Math.max(wx, Math.min(wx + ww - w, gx));
-                            snapPos = { x: clampedX, y: wy, rot: 0 };
+                            const curRot = ((group.rotation() % 360) + 360) % 360;
+                            const targetRot = (curRot >= 90 && curRot <= 270) ? 180 : 0;
+                            snapPos = { x: clampedX, y: wy, rot: targetRot };
                         }
                     }
                 } else {
                     const distX = Math.abs(gx - wx);
-                    if (distX < snapThreshold && gy + w >= wy - 15 && gy <= wy + wh + 15) {
+                    if (distX < snapThreshold && gy + w >= wy - 20 && gy <= wy + wh + 20) {
                         if (distX < bestDist) {
                             bestDist = distX;
                             snappedWall = other;
                             const clampedY = Math.max(wy, Math.min(wy + wh - w, gy));
-                            snapPos = { x: wx, y: clampedY, rot: 90 };
+                            const curRot = ((group.rotation() % 360) + 360) % 360;
+                            const targetRot = (curRot >= 180) ? 270 : 90;
+                            snapPos = { x: wx, y: clampedY, rot: targetRot };
                         }
                     }
                 }
@@ -1917,12 +1919,13 @@
             }
         }
 
-        // ===== ADD DOOR TO CANVAS (LOCATION FLOOR PLAN) =====
+        // ===== ADD DOOR / WINDOW TO CANVAS (LOCATION FLOOR PLAN) =====
         function addDoorToCanvas(type, id, x, y, rotation, customWidth, customHeight, parentId) {
             const key = `${type}_${id}`;
-            const isDouble = (type === 'door_2');
-            const defW = isDouble ? 90 : 50;
-            const defH = isDouble ? 45 : 50;
+            const isWindowFloor = (type === 'door_2' || type === 'window_floor' || type === 'window_2' || type === 'window_4' || type === 'window_wall');
+            const isDoorWall = (type === 'door_wall');
+            const defW = isWindowFloor ? 80 : 50;
+            const defH = isWindowFloor ? 15 : (isDoorWall ? 15 : 50);
             const width = customWidth || defW;
             const height = customHeight || defH;
 
@@ -1945,74 +1948,110 @@
                 group.setAttr('parentType', 'wall');
             }
 
+            // Return exact bounding box matching object dimensions
+            group.getClientRect = function (config) {
+                const w = this.getAttr('doorWidth') || width;
+                const h = this.getAttr('doorHeight') || height;
+                if (config && config.skipTransform) {
+                    return { x: 0, y: 0, width: w, height: h };
+                }
+                const relativeTo = config && config.relativeTo;
+                const transform = this.getAbsoluteTransform(relativeTo);
+                const p1 = transform.point({ x: 0, y: 0 });
+                const p2 = transform.point({ x: w, y: 0 });
+                const p3 = transform.point({ x: w, y: h });
+                const p4 = transform.point({ x: 0, y: h });
+                const minX = Math.min(p1.x, p2.x, p3.x, p4.x);
+                const maxX = Math.max(p1.x, p2.x, p3.x, p4.x);
+                const minY = Math.min(p1.y, p2.y, p3.y, p4.y);
+                const maxY = Math.max(p1.y, p2.y, p3.y, p4.y);
+                return {
+                    x: minX,
+                    y: minY,
+                    width: maxX - minX,
+                    height: maxY - minY
+                };
+            };
+
             function buildDoorShapes(w, h) {
                 group.destroyChildren();
 
-                // Drag/hit area
-                group.add(new Konva.Rect({
-                    x: 0, y: 0, width: w, height: h,
-                    fill: 'rgba(37, 99, 235, 0.05)',
-                    name: 'door-hit'
-                }));
+                if (isWindowFloor) {
+                    // CỬA SỔ MẶT BẰNG (2D Architectural Window on Floor Plan)
+                    group.add(new Konva.Rect({
+                        x: 0, y: 0, width: w, height: h,
+                        fill: 'rgba(6, 182, 212, 0.1)',
+                        stroke: '#0891b2', strokeWidth: 1.5,
+                        cornerRadius: 1, name: 'window-body'
+                    }));
 
-                const postW = 8;
-                const postH = 15;
-                // Left jamb
-                group.add(new Konva.Rect({
-                    x: 0, y: 0, width: postW, height: postH,
-                    fill: '#1e293b', stroke: '#3b82f6', strokeWidth: 1.5, cornerRadius: 1
-                }));
-                // Right jamb
-                group.add(new Konva.Rect({
-                    x: w - postW, y: 0, width: postW, height: postH,
-                    fill: '#1e293b', stroke: '#3b82f6', strokeWidth: 1.5, cornerRadius: 1
-                }));
+                    const postW = 8;
+                    // Khung 2 bên
+                    group.add(new Konva.Rect({
+                        x: 0, y: 0, width: postW, height: h,
+                        fill: '#1e293b', stroke: '#0891b2', strokeWidth: 1.5, cornerRadius: 1
+                    }));
+                    group.add(new Konva.Rect({
+                        x: w - postW, y: 0, width: postW, height: h,
+                        fill: '#1e293b', stroke: '#0891b2', strokeWidth: 1.5, cornerRadius: 1
+                    }));
 
-                // Threshold line
-                group.add(new Konva.Line({
-                    points: [postW, postH / 2, w - postW, postH / 2],
-                    stroke: 'rgba(59, 130, 246, 0.4)', strokeWidth: 1, dash: [3, 3]
-                }));
+                    // Tấm kính đôi xanh lơ
+                    const glassW = Math.max(4, w - postW * 2);
+                    group.add(new Konva.Rect({
+                        x: postW, y: 2, width: glassW, height: Math.max(4, h - 4),
+                        fill: 'rgba(56, 189, 248, 0.25)', stroke: '#38bdf8', strokeWidth: 1, cornerRadius: 1
+                    }));
 
-                if (isDouble) {
-                    const leafLen = (w - postW * 2) / 2;
-                    // Left leaf
+                    // Đố chia cửa sổ ở giữa
                     group.add(new Konva.Line({
-                        points: [postW, postH, postW, postH + leafLen],
-                        stroke: '#60a5fa', strokeWidth: 2.5
-                    }));
-                    group.add(new Konva.Circle({
-                        x: postW, y: postH, radius: 2.5, fill: '#93c5fd'
-                    }));
-                    group.add(new Konva.Arc({
-                        x: postW, y: postH,
-                        innerRadius: leafLen, outerRadius: leafLen,
-                        angle: 90, rotation: 0,
-                        stroke: 'rgba(96, 165, 250, 0.45)', strokeWidth: 1.5, dash: [3, 3]
-                    }));
-
-                    // Right leaf
-                    group.add(new Konva.Line({
-                        points: [w - postW, postH, w - postW, postH + leafLen],
-                        stroke: '#60a5fa', strokeWidth: 2.5
-                    }));
-                    group.add(new Konva.Circle({
-                        x: w - postW, y: postH, radius: 2.5, fill: '#93c5fd'
-                    }));
-                    group.add(new Konva.Arc({
-                        x: w - postW, y: postH,
-                        innerRadius: leafLen, outerRadius: leafLen,
-                        angle: 90, rotation: 90,
-                        stroke: 'rgba(96, 165, 250, 0.45)', strokeWidth: 1.5, dash: [3, 3]
+                        points: [w / 2, 0, w / 2, h],
+                        stroke: '#0891b2', strokeWidth: 2
                     }));
 
                     group.add(new Konva.Text({
-                        text: `D2 #${id}`,
-                        x: 0, y: postH + 4, width: w,
+                        text: `CS #${id}`,
+                        x: 0, y: h + 2, width: w,
                         fontSize: 9, fontFamily: 'Inter, sans-serif', fontStyle: 'bold',
-                        fill: 'rgba(147, 197, 253, 0.9)', align: 'center', listening: false
+                        fill: 'rgba(56, 189, 248, 0.95)', align: 'center', listening: false
+                    }));
+                } else if (isDoorWall) {
+                    // Cửa chính trên tường (khi vẽ trên mặt bằng)
+                    group.add(new Konva.Rect({
+                        x: 0, y: 0, width: w, height: h,
+                        fill: '#1e293b', stroke: '#2563eb', strokeWidth: 1.5,
+                        cornerRadius: 2, name: 'door-body'
+                    }));
+                    group.add(new Konva.Text({
+                        text: `Cửa Tường #${id}`,
+                        x: 0, y: 2, width: w, height: h - 4,
+                        fontSize: 8, fontFamily: 'Inter, sans-serif', fontStyle: 'bold',
+                        fill: '#93c5fd', align: 'center', verticalAlign: 'middle', listening: false
                     }));
                 } else {
+                    // CỬA CHÍNH 1 CÁNH (door_1) - Giữ nguyên kiến trúc mở quay
+                    group.add(new Konva.Rect({
+                        x: 0, y: 0, width: w, height: h,
+                        fill: 'rgba(37, 99, 235, 0.05)',
+                        name: 'door-hit'
+                    }));
+
+                    const postW = 8;
+                    const postH = 15;
+                    group.add(new Konva.Rect({
+                        x: 0, y: 0, width: postW, height: postH,
+                        fill: '#1e293b', stroke: '#3b82f6', strokeWidth: 1.5, cornerRadius: 1
+                    }));
+                    group.add(new Konva.Rect({
+                        x: w - postW, y: 0, width: postW, height: postH,
+                        fill: '#1e293b', stroke: '#3b82f6', strokeWidth: 1.5, cornerRadius: 1
+                    }));
+
+                    group.add(new Konva.Line({
+                        points: [postW, postH / 2, w - postW, postH / 2],
+                        stroke: 'rgba(59, 130, 246, 0.4)', strokeWidth: 1, dash: [3, 3]
+                    }));
+
                     const leafLen = w - postW * 2;
                     group.add(new Konva.Line({
                         points: [postW, postH, postW, postH + leafLen],
@@ -2048,6 +2087,9 @@
                 group.setAttr('customWidth', newW);
                 buildDoorShapes(newW, group.getAttr('doorHeight'));
                 snapItemToWall(group);
+                if (selectedNode === group) {
+                    transformer.forceUpdate();
+                }
                 mainLayer.batchDraw();
             });
 
@@ -2059,6 +2101,9 @@
                 snapItemToWall(group);
                 group.setAttr('baseX', group.x());
                 group.setAttr('baseY', group.y());
+                if (selectedNode === group) {
+                    transformer.forceUpdate();
+                }
                 mainLayer.batchDraw();
             });
 
@@ -2095,16 +2140,42 @@
                 group.setAttr('parentType', 'wall');
             }
 
+            // Return exact bounding box matching object dimensions
+            group.getClientRect = function (config) {
+                const w = this.getAttr('windowWidth') || width;
+                const h = this.getAttr('windowHeight') || height;
+                if (config && config.skipTransform) {
+                    return { x: 0, y: 0, width: w, height: h };
+                }
+                const relativeTo = config && config.relativeTo;
+                const transform = this.getAbsoluteTransform(relativeTo);
+                const p1 = transform.point({ x: 0, y: 0 });
+                const p2 = transform.point({ x: w, y: 0 });
+                const p3 = transform.point({ x: w, y: h });
+                const p4 = transform.point({ x: 0, y: h });
+                const minX = Math.min(p1.x, p2.x, p3.x, p4.x);
+                const maxX = Math.max(p1.x, p2.x, p3.x, p4.x);
+                const minY = Math.min(p1.y, p2.y, p3.y, p4.y);
+                const maxY = Math.max(p1.y, p2.y, p3.y, p4.y);
+                return {
+                    x: minX,
+                    y: minY,
+                    width: maxX - minX,
+                    height: maxY - minY
+                };
+            };
+
             function buildWindowShapes(w, h) {
                 group.destroyChildren();
 
                 group.add(new Konva.Rect({
                     x: 0, y: 0, width: w, height: h,
-                    fill: 'rgba(6, 182, 212, 0.05)',
-                    name: 'window-hit'
+                    fill: 'rgba(6, 182, 212, 0.08)',
+                    stroke: '#0891b2', strokeWidth: 1.5,
+                    cornerRadius: 1, name: 'window-body'
                 }));
 
-                const postW = 6;
+                const postW = 8;
                 // Left jamb
                 group.add(new Konva.Rect({
                     x: 0, y: 0, width: postW, height: h,
@@ -2116,20 +2187,11 @@
                     fill: '#1e293b', stroke: '#0891b2', strokeWidth: 1.5, cornerRadius: 1
                 }));
 
-                // Wall outer lines
-                group.add(new Konva.Line({
-                    points: [postW, 0, w - postW, 0],
-                    stroke: '#475569', strokeWidth: 1.5
-                }));
-                group.add(new Konva.Line({
-                    points: [postW, h, w - postW, h],
-                    stroke: '#475569', strokeWidth: 1.5
-                }));
-
-                // Glass body
+                // Glass pane
+                const glassW = Math.max(4, w - postW * 2);
                 group.add(new Konva.Rect({
-                    x: postW, y: 2, width: w - postW * 2, height: h - 4,
-                    fill: 'rgba(6, 182, 212, 0.28)', stroke: '#22d3ee', strokeWidth: 1.2, cornerRadius: 1
+                    x: postW, y: 2, width: glassW, height: Math.max(4, h - 4),
+                    fill: 'rgba(56, 189, 248, 0.28)', stroke: '#22d3ee', strokeWidth: 1.2, cornerRadius: 1
                 }));
 
                 if (isQuad) {
@@ -2139,12 +2201,12 @@
                         const divX = postW + step * i;
                         group.add(new Konva.Line({
                             points: [divX, 1, divX, h - 1],
-                            stroke: '#22d3ee', strokeWidth: 2
+                            stroke: '#0891b2', strokeWidth: 1.5
                         }));
                     }
                     group.add(new Konva.Text({
-                        text: `W4 #${id}`,
-                        x: 0, y: h / 2 - 4, width: w,
+                        text: `CS4 #${id}`,
+                        x: 0, y: h + 2, width: w,
                         fontSize: 8, fontFamily: 'Inter, sans-serif', fontStyle: 'bold',
                         fill: '#a5f3fc', align: 'center', listening: false
                     }));
@@ -2152,11 +2214,11 @@
                     const midX = w / 2;
                     group.add(new Konva.Line({
                         points: [midX, 1, midX, h - 1],
-                        stroke: '#22d3ee', strokeWidth: 2
+                        stroke: '#0891b2', strokeWidth: 1.5
                     }));
                     group.add(new Konva.Text({
-                        text: `W2 #${id}`,
-                        x: 0, y: h / 2 - 4, width: w,
+                        text: `CS #${id}`,
+                        x: 0, y: h + 2, width: w,
                         fontSize: 8, fontFamily: 'Inter, sans-serif', fontStyle: 'bold',
                         fill: '#a5f3fc', align: 'center', listening: false
                     }));
@@ -2174,6 +2236,9 @@
                 group.setAttr('customWidth', newW);
                 buildWindowShapes(newW, group.getAttr('windowHeight'));
                 snapItemToWall(group);
+                if (selectedNode === group) {
+                    transformer.forceUpdate();
+                }
                 mainLayer.batchDraw();
             });
 
@@ -2185,6 +2250,9 @@
                 snapItemToWall(group);
                 group.setAttr('baseX', group.x());
                 group.setAttr('baseY', group.y());
+                if (selectedNode === group) {
+                    transformer.forceUpdate();
+                }
                 mainLayer.batchDraw();
             });
 
@@ -2222,7 +2290,7 @@
 
         function deactivateGroupHover(group) {
             const objType = group.getAttr('objectType');
-            if (['wall', 'door_1', 'door_2', 'window_2', 'window_4'].includes(objType)) return;
+            if (['wall', 'door_1', 'door_2', 'door_wall', 'window_floor', 'window_wall', 'window_2', 'window_4'].includes(objType)) return;
             const body = group.findOne('.' + objType + '-body');
             if (body) {
                 body.strokeWidth(objType === 'rack' ? 2 : 1.5);
@@ -2240,12 +2308,42 @@
                 group.scale({ x: 1, y: 1 });
                 group.x(group.getAttr('baseX'));
                 group.y(group.getAttr('baseY'));
-                if (objType !== 'wall' && !['door_1', 'door_2', 'window_2', 'window_4'].includes(objType)) {
+                if (objType !== 'wall' && !['door_1', 'door_2', 'door_wall', 'window_floor', 'window_wall', 'window_2', 'window_4'].includes(objType)) {
                     const body = group.findOne('.' + objType + '-body');
                     if (body) { body.strokeWidth(objType === 'rack' ? 2 : 1.5); body.shadowBlur(0); body.shadowOpacity(0); }
                     if (tooltipEl) tooltipEl.classList.remove('show');
                 }
+
+                // If this is a wall, record initial relative positions of attached items
+                if (objType === 'wall') {
+                    const wallId = group.getAttr('objectId');
+                    group._attachedChildren = [];
+                    mainLayer.find('.layout-object').forEach(child => {
+                        if (child !== group && child.getAttr('parentType') === 'wall' && child.getAttr('parentId') == wallId) {
+                            group._attachedChildren.push({
+                                node: child,
+                                offsetX: child.x() - group.x(),
+                                offsetY: child.y() - group.y()
+                            });
+                        }
+                    });
+                }
                 mainLayer.batchDraw();
+            });
+
+            group.on('dragmove', () => {
+                const objType = group.getAttr('objectType');
+                if (objType === 'wall' && group._attachedChildren && group._attachedChildren.length > 0) {
+                    const curX = group.x();
+                    const curY = group.y();
+                    group._attachedChildren.forEach(item => {
+                        item.node.position({
+                            x: curX + item.offsetX,
+                            y: curY + item.offsetY
+                        });
+                    });
+                    mainLayer.batchDraw();
+                }
             });
 
             group.on('dragend', () => {
@@ -2343,10 +2441,31 @@
                 group.setAttr('baseX', currentX);
                 group.setAttr('baseY', currentY);
 
+                // If wall moved, finalize attached items positions
+                if (objType === 'wall' && group._attachedChildren && group._attachedChildren.length > 0) {
+                    group._attachedChildren.forEach(item => {
+                        const nx = currentX + item.offsetX;
+                        const ny = currentY + item.offsetY;
+                        item.node.position({ x: nx, y: ny });
+                        item.node.setAttr('baseX', nx);
+                        item.node.setAttr('baseY', ny);
+                    });
+                    group._attachedChildren = [];
+                }
+
+                if (['door_1', 'door_2', 'door_wall', 'window_floor', 'window_wall', 'window_2', 'window_4'].includes(objType)) {
+                    snapItemToWall(group);
+                    group.setAttr('baseX', group.x());
+                    group.setAttr('baseY', group.y());
+                }
+
                 if (objType !== 'wall') {
                     const body = group.findOne('.' + objType + '-body');
                     if (body) { body.strokeWidth(objType === 'rack' ? 2 : 1.5); body.shadowBlur(0); body.shadowOpacity(0); }
                     if (tooltipEl) tooltipEl.classList.remove('show');
+                }
+                if (selectedNode) {
+                    transformer.forceUpdate();
                 }
                 mainLayer.batchDraw();
             });
@@ -2362,7 +2481,7 @@
             // Hover highlight & Tooltip
             group.on('mouseenter', (e) => {
                 const objType = group.getAttr('objectType');
-                if (objType === 'wall') return;
+                if (['wall', 'door_1', 'door_2', 'door_wall', 'window_floor', 'window_wall', 'window_2', 'window_4'].includes(objType)) return;
 
                 mainLayer.find('.layout-object').forEach(otherGroup => {
                     if (otherGroup !== group) deactivateGroupHover(otherGroup);
@@ -2442,7 +2561,7 @@
 
             group.on('mouseleave', () => {
                 const objType = group.getAttr('objectType');
-                if (['wall', 'door_1', 'door_2', 'window_2', 'window_4'].includes(objType)) return;
+                if (['wall', 'door_1', 'door_2', 'door_wall', 'window_floor', 'window_wall', 'window_2', 'window_4'].includes(objType)) return;
 
                 const pos = stage.getPointerPosition();
                 const intersection = pos ? stage.getIntersection(pos) : null;
@@ -2479,8 +2598,8 @@
             const isAsset = (objType === 'asset');
             const isWallElevation = (objType === 'wall_elevation');
 
-            const isDoor = (objType === 'door_1' || objType === 'door_2');
-            const isWindow = (objType === 'window_2' || objType === 'window_4');
+            const isDoor = (objType === 'door_1' || objType === 'door_2' || objType === 'door_wall');
+            const isWindow = (objType === 'window_floor' || objType === 'window_wall' || objType === 'window_2' || objType === 'window_4');
 
             transformer.resizeEnabled(isWall || isAsset || isWallElevation || isDoor || isWindow);
             transformer.rotateEnabled(!isWall && !isWallElevation && currentViewMode !== 'wall');
@@ -2503,7 +2622,7 @@
                 transformer.padding(0);
                 transformer.ignoreStroke(true);
                 if (currentViewMode === 'wall') {
-                    transformer.enabledAnchors(['top-center', 'middle-left', 'middle-right', 'bottom-center']);
+                    transformer.enabledAnchors(['top-left', 'top-center', 'top-right', 'middle-right', 'bottom-right', 'bottom-center', 'bottom-left', 'middle-left']);
                 } else {
                     transformer.enabledAnchors(['middle-left', 'middle-right']);
                 }
@@ -2538,11 +2657,21 @@
         });
 
         document.getElementById('ctx-rotate-cw').addEventListener('click', () => {
-            if (selectedNode) { selectedNode.rotation(selectedNode.rotation() + 90); mainLayer.batchDraw(); }
+            if (selectedNode) {
+                selectedNode.rotation(selectedNode.rotation() + 90);
+                snapItemToWall(selectedNode);
+                transformer.forceUpdate();
+                mainLayer.batchDraw();
+            }
             hideContextMenu();
         });
         document.getElementById('ctx-rotate-ccw').addEventListener('click', () => {
-            if (selectedNode) { selectedNode.rotation(selectedNode.rotation() - 90); mainLayer.batchDraw(); }
+            if (selectedNode) {
+                selectedNode.rotation(selectedNode.rotation() - 90);
+                snapItemToWall(selectedNode);
+                transformer.forceUpdate();
+                mainLayer.batchDraw();
+            }
             hideContextMenu();
         });
         document.getElementById('ctx-remove').addEventListener('click', () => {
@@ -2591,7 +2720,7 @@
                     } else if (objType === 'asset') {
                         entry.width = Math.round((group.getAttr('assetWidth') || 0) * 100) / 100;
                         entry.height = Math.round((group.getAttr('assetHeight') || 0) * 100) / 100;
-                    } else if (['door_1', 'door_2', 'window_2', 'window_4'].includes(objType)) {
+                    } else if (['door_1', 'door_2', 'door_wall', 'window_floor', 'window_wall', 'window_2', 'window_4'].includes(objType)) {
                         entry.width = Math.round((group.getAttr('customWidth') || group.getAttr('doorWidth') || group.getAttr('windowWidth') || 0) * 100) / 100;
                         entry.height = Math.round((group.getAttr('customHeight') || group.getAttr('doorHeight') || group.getAttr('windowHeight') || 0) * 100) / 100;
                         entry.parent_type = group.getAttr('parentType') || null;
@@ -2654,14 +2783,14 @@
 
                     // Đồng bộ cửa chính và cửa sổ từ mặt đứng vào floorPlanObjects
                     floorPlanObjects = floorPlanObjects.filter(o => !(
-                        ['door_1', 'door_2', 'window_2', 'window_4'].includes(o.object_type) &&
+                        ['door_1', 'door_2', 'door_wall', 'window_floor', 'window_wall', 'window_2', 'window_4'].includes(o.object_type) &&
                         o.parent_type === 'wall' &&
                         parseInt(o.parent_id, 10) === activeWallId
                     ));
 
                     wallBgGroup.find('.layout-object').forEach(group => {
                         const objType = group.getAttr('objectType');
-                        if (['door_1', 'door_2', 'window_2', 'window_4'].includes(objType)) {
+                        if (['door_1', 'door_2', 'door_wall', 'window_floor', 'window_wall', 'window_2', 'window_4'].includes(objType)) {
                             const localX = group.x();
                             const w = group.getAttr('doorWidth') || group.getAttr('windowWidth') || group.width();
                             const h = group.getAttr('doorHeight') || group.getAttr('windowHeight') || group.height();
@@ -2810,14 +2939,14 @@
                 }
                 // Đồng bộ cửa chính và cửa sổ từ mặt đứng vào floorPlanObjects
                 floorPlanObjects = floorPlanObjects.filter(o => !(
-                    ['door_1', 'door_2', 'window_2', 'window_4'].includes(o.object_type) &&
+                    ['door_1', 'door_2', 'door_wall', 'window_floor', 'window_wall', 'window_2', 'window_4'].includes(o.object_type) &&
                     o.parent_type === 'wall' &&
                     parseInt(o.parent_id, 10) === activeWallId
                 ));
 
                 wallBgGroup.find('.layout-object').forEach(group => {
                     const objType = group.getAttr('objectType');
-                    if (['door_1', 'door_2', 'window_2', 'window_4'].includes(objType)) {
+                    if (['door_1', 'door_2', 'door_wall', 'window_floor', 'window_wall', 'window_2', 'window_4'].includes(objType)) {
                         const localX = group.x();
                         const w = group.getAttr('doorWidth') || group.getAttr('windowWidth') || group.width();
                         const h = group.getAttr('doorHeight') || group.getAttr('windowHeight') || group.height();
@@ -3066,7 +3195,7 @@
             const wallY = wallInFloor ? wallInFloor.y : wallGroup.y();
 
             floorPlanObjects.forEach(obj => {
-                if (!['door_1', 'door_2', 'window_2', 'window_4'].includes(obj.object_type)) return;
+                if (!['door_1', 'door_2', 'door_wall', 'window_floor', 'window_wall', 'window_2', 'window_4'].includes(obj.object_type)) return;
                 const isAttached = (obj.parent_type === 'wall' && parseInt(obj.parent_id, 10) === activeWallId);
                 let localAlongWall = null;
                 if (isAttached) {
@@ -3085,9 +3214,9 @@
 
                 if (localAlongWall !== null) {
                     const clampedAlong = Math.max(0, Math.min(wallLength - (obj.width || 75), localAlongWall));
-                    if (obj.object_type === 'door_1' || obj.object_type === 'door_2') {
+                    if (obj.object_type === 'door_1' || obj.object_type === 'door_2' || obj.object_type === 'door_wall') {
                         addDoorToWallCanvas(obj.object_type, obj.object_id, clampedAlong, activeWallId, obj.width, obj.height);
-                    } else if (obj.object_type === 'window_2' || obj.object_type === 'window_4') {
+                    } else if (obj.object_type === 'window_floor' || obj.object_type === 'window_wall' || obj.object_type === 'window_2' || obj.object_type === 'window_4') {
                         const localY = obj.z_index ? (wallHeight - obj.z_index - (obj.height || 90)) : undefined;
                         addWindowToWallCanvas(obj.object_type, obj.object_id, clampedAlong, localY, activeWallId, obj.width, obj.height);
                     }
@@ -3325,7 +3454,7 @@
                     const w = group.getAttr('doorWidth') || width;
                     const h = group.getAttr('doorHeight') || height;
                     const cx = Math.max(0, Math.min(wallLength - w, localPos.x));
-                    const cy = Math.max(0, wallHeight - h);
+                    const cy = Math.max(0, Math.min(wallHeight - h, localPos.y));
                     return wallBgGroup.getAbsoluteTransform().point({ x: cx, y: cy });
                 }
             });
@@ -3336,19 +3465,38 @@
             group.setAttr('parentId', activeWallId);
             group.setAttr('parentType', 'wall');
 
+            // Exact bounding box for Transformer
+            group.getClientRect = function (config) {
+                const w = this.getAttr('doorWidth') || width;
+                const h = this.getAttr('doorHeight') || height;
+                if (config && config.skipTransform) {
+                    return { x: 0, y: 0, width: w, height: h };
+                }
+                const relativeTo = config && config.relativeTo;
+                const transform = this.getAbsoluteTransform(relativeTo);
+                const p1 = transform.point({ x: 0, y: 0 });
+                const p2 = transform.point({ x: w, y: 0 });
+                const p3 = transform.point({ x: w, y: h });
+                const p4 = transform.point({ x: 0, y: h });
+                const minX = Math.min(p1.x, p2.x, p3.x, p4.x);
+                const maxX = Math.max(p1.x, p2.x, p3.x, p4.x);
+                const minY = Math.min(p1.y, p2.y, p3.y, p4.y);
+                const maxY = Math.max(p1.y, p2.y, p3.y, p4.y);
+                return {
+                    x: minX,
+                    y: minY,
+                    width: maxX - minX,
+                    height: maxY - minY
+                };
+            };
+
             function buildDoorElevationShapes(w, h) {
                 group.destroyChildren();
 
-                // Drop shadow
-                group.add(new Konva.Rect({
-                    x: 3, y: 3, width: w, height: h,
-                    fill: 'rgba(0,0,0,0.4)', cornerRadius: 3
-                }));
-
-                // Outer frame
+                // Outer frame (flush 0, 0, w, h)
                 group.add(new Konva.Rect({
                     x: 0, y: 0, width: w, height: h,
-                    fill: '#151922', stroke: '#3b82f6', strokeWidth: 3, cornerRadius: 2,
+                    fill: '#151922', stroke: '#3b82f6', strokeWidth: 2.5, cornerRadius: 2,
                     name: 'door-body'
                 }));
 
@@ -3371,37 +3519,37 @@
                     }
 
                     const panelTop = h > 120 ? 38 : 10;
-                    const panelH = (h - panelTop - 20) / 2;
+                    const panelH = Math.max(10, (h - panelTop - 20) / 2);
                     group.add(new Konva.Rect({
-                        x: 8, y: panelTop, width: leafW - 10, height: panelH,
+                        x: 8, y: panelTop, width: Math.max(4, leafW - 10), height: panelH,
                         fill: '#141824', stroke: '#2e384d', strokeWidth: 1.5, cornerRadius: 2
                     }));
                     group.add(new Konva.Rect({
-                        x: 8, y: panelTop + panelH + 8, width: leafW - 10, height: panelH,
+                        x: 8, y: panelTop + panelH + 8, width: Math.max(4, leafW - 10), height: panelH,
                         fill: '#141824', stroke: '#2e384d', strokeWidth: 1.5, cornerRadius: 2
                     }));
 
                     group.add(new Konva.Rect({
-                        x: 7 + leafW, y: panelTop, width: leafW - 10, height: panelH,
+                        x: 7 + leafW, y: panelTop, width: Math.max(4, leafW - 10), height: panelH,
                         fill: '#141824', stroke: '#2e384d', strokeWidth: 1.5, cornerRadius: 2
                     }));
                     group.add(new Konva.Rect({
-                        x: 7 + leafW, y: panelTop + panelH + 8, width: leafW - 10, height: panelH,
+                        x: 7 + leafW, y: panelTop + panelH + 8, width: Math.max(4, leafW - 10), height: panelH,
                         fill: '#141824', stroke: '#2e384d', strokeWidth: 1.5, cornerRadius: 2
                     }));
 
                     const handleY = panelTop + panelH - 15;
                     group.add(new Konva.Rect({
-                        x: leafW - 4, y: handleY, width: 3.5, height: 45,
+                        x: leafW - 4, y: handleY, width: 3.5, height: 35,
                         fill: '#f8fafc', stroke: '#94a3b8', strokeWidth: 0.5, cornerRadius: 1
                     }));
                     group.add(new Konva.Rect({
-                        x: leafW + 8, y: handleY, width: 3.5, height: 45,
+                        x: leafW + 8, y: handleY, width: 3.5, height: 35,
                         fill: '#f8fafc', stroke: '#94a3b8', strokeWidth: 0.5, cornerRadius: 1
                     }));
 
                     group.add(new Konva.Text({
-                        text: `CỬA CHÍNH 2 CÁNH (D2 #${id})`,
+                        text: `CỬA 2 CÁNH #${id}`,
                         x: 0, y: h - 18, width: w,
                         fontSize: 9, fontFamily: 'Inter, sans-serif', fontStyle: 'bold',
                         fill: '#93c5fd', align: 'center', listening: false
@@ -3412,8 +3560,8 @@
                         fill: '#1e2536', stroke: '#334155', strokeWidth: 1.5, cornerRadius: 1
                     }));
 
-                    const panelW = w - 18;
-                    const panelH = (h - 40) / 2;
+                    const panelW = Math.max(10, w - 18);
+                    const panelH = Math.max(10, (h - 40) / 2);
                     group.add(new Konva.Rect({
                         x: 9, y: 10, width: panelW, height: panelH,
                         fill: '#141824', stroke: '#2e384d', strokeWidth: 1.5, cornerRadius: 2
@@ -3425,16 +3573,16 @@
 
                     const handleY = 14 + panelH;
                     group.add(new Konva.Rect({
-                        x: w - 16, y: handleY - 12, width: 5, height: 22,
+                        x: Math.max(10, w - 16), y: handleY - 10, width: 5, height: 20,
                         fill: '#cbd5e1', stroke: '#64748b', strokeWidth: 0.5, cornerRadius: 1
                     }));
                     group.add(new Konva.Line({
-                        points: [w - 14, handleY, w - 26, handleY],
-                        stroke: '#f8fafc', strokeWidth: 3.5, lineCap: 'round'
+                        points: [Math.max(10, w - 14), handleY, Math.max(4, w - 26), handleY],
+                        stroke: '#f8fafc', strokeWidth: 3, lineCap: 'round'
                     }));
 
                     group.add(new Konva.Text({
-                        text: `CỬA 1 CÁNH (D1 #${id})`,
+                        text: `CỬA #${id}`,
                         x: 0, y: h - 18, width: w,
                         fontSize: 9, fontFamily: 'Inter, sans-serif', fontStyle: 'bold',
                         fill: '#93c5fd', align: 'center', listening: false
@@ -3447,14 +3595,43 @@
             group.on('transformend', () => {
                 const scaleX = Math.abs(group.scaleX());
                 const scaleY = Math.abs(group.scaleY());
-                const newW = Math.max(40, Math.round(group.getAttr('doorWidth') * scaleX));
-                const newH = Math.max(60, Math.round(group.getAttr('doorHeight') * scaleY));
+                let newW = Math.max(30, Math.round((group.getAttr('doorWidth') || width) * scaleX));
+                let newH = Math.max(40, Math.round((group.getAttr('doorHeight') || height) * scaleY));
+                if (snapToGrid) {
+                    newW = snapValue(newW);
+                    newH = snapValue(newH);
+                }
+                newW = Math.min(wallLength, newW);
+                newH = Math.min(wallHeight, newH);
                 group.scaleX(1);
                 group.scaleY(1);
                 group.setAttr('doorWidth', newW);
                 group.setAttr('doorHeight', newH);
-                group.y(Math.max(0, wallHeight - newH));
+                const cx = Math.max(0, Math.min(wallLength - newW, group.x()));
+                const cy = Math.max(0, Math.min(wallHeight - newH, group.y()));
+                group.position({ x: cx, y: cy });
                 buildDoorElevationShapes(newW, newH);
+                if (selectedNode === group) {
+                    transformer.forceUpdate();
+                }
+                mainLayer.batchDraw();
+            });
+
+            group.on('dragend', () => {
+                let localX = group.x();
+                let localY = group.y();
+                if (snapToGrid) {
+                    localX = snapValue(localX);
+                    localY = snapValue(localY);
+                }
+                const w = group.getAttr('doorWidth') || width;
+                const h = group.getAttr('doorHeight') || height;
+                localX = Math.max(0, Math.min(wallLength - w, localX));
+                localY = Math.max(0, Math.min(wallHeight - h, localY));
+                group.position({ x: localX, y: localY });
+                if (selectedNode === group) {
+                    transformer.forceUpdate();
+                }
                 mainLayer.batchDraw();
             });
 
@@ -3503,7 +3680,7 @@
                     const w = group.getAttr('windowWidth') || width;
                     const h = group.getAttr('windowHeight') || height;
                     const cx = Math.max(0, Math.min(wallLength - w, localPos.x));
-                    const cy = Math.max(0, Math.min(wallHeight - h - 5, localPos.y));
+                    const cy = Math.max(0, Math.min(wallHeight - h, localPos.y));
                     return wallBgGroup.getAbsoluteTransform().point({ x: cx, y: cy });
                 }
             });
@@ -3514,84 +3691,93 @@
             group.setAttr('parentId', activeWallId);
             group.setAttr('parentType', 'wall');
 
+            // Exact bounding box for Transformer
+            group.getClientRect = function (config) {
+                const w = this.getAttr('windowWidth') || width;
+                const h = this.getAttr('windowHeight') || height;
+                if (config && config.skipTransform) {
+                    return { x: 0, y: 0, width: w, height: h };
+                }
+                const relativeTo = config && config.relativeTo;
+                const transform = this.getAbsoluteTransform(relativeTo);
+                const p1 = transform.point({ x: 0, y: 0 });
+                const p2 = transform.point({ x: w, y: 0 });
+                const p3 = transform.point({ x: w, y: h });
+                const p4 = transform.point({ x: 0, y: h });
+                const minX = Math.min(p1.x, p2.x, p3.x, p4.x);
+                const maxX = Math.max(p1.x, p2.x, p3.x, p4.x);
+                const minY = Math.min(p1.y, p2.y, p3.y, p4.y);
+                const maxY = Math.max(p1.y, p2.y, p3.y, p4.y);
+                return {
+                    x: minX,
+                    y: minY,
+                    width: maxX - minX,
+                    height: maxY - minY
+                };
+            };
+
             function buildWindowElevationShapes(w, h) {
                 group.destroyChildren();
 
-                group.add(new Konva.Rect({
-                    x: 3, y: 3, width: w, height: h,
-                    fill: 'rgba(0,0,0,0.3)', cornerRadius: 2
-                }));
-
-                group.add(new Konva.Rect({
-                    x: -4, y: h - 2, width: w + 8, height: 8,
-                    fill: '#475569', stroke: '#64748b', strokeWidth: 1.5, cornerRadius: 1
-                }));
-
+                // Outer frame (flush 0, 0, w, h)
                 group.add(new Konva.Rect({
                     x: 0, y: 0, width: w, height: h,
-                    fill: '#151922', stroke: '#0891b2', strokeWidth: 3, cornerRadius: 2,
+                    fill: '#151922', stroke: '#0891b2', strokeWidth: 2.5, cornerRadius: 2,
                     name: 'window-body'
                 }));
 
+                // Sill bar at bottom (within [0, w])
+                group.add(new Konva.Rect({
+                    x: 0, y: Math.max(0, h - 6), width: w, height: 6,
+                    fill: '#475569', stroke: '#64748b', strokeWidth: 1, cornerRadius: 1
+                }));
+
                 if (isQuad) {
-                    const innerW = w - 12;
+                    const innerW = Math.max(8, w - 12);
                     const paneW = innerW / 4;
                     for (let i = 0; i < 4; i++) {
                         const px = 6 + i * paneW;
                         group.add(new Konva.Rect({
-                            x: px + 1.5, y: 6, width: paneW - 3, height: h - 14,
-                            fill: 'rgba(14, 165, 233, 0.22)', stroke: '#22d3ee', strokeWidth: 1.2, cornerRadius: 1
-                        }));
-                        group.add(new Konva.Line({
-                            points: [px + 5, 12, px + paneW - 6, h - 22],
-                            stroke: 'rgba(255, 255, 255, 0.35)', strokeWidth: 1.5, lineCap: 'round', listening: false
+                            x: px + 1, y: 5, width: Math.max(2, paneW - 2), height: Math.max(4, h - 14),
+                            fill: 'rgba(14, 165, 233, 0.22)', stroke: '#22d3ee', strokeWidth: 1, cornerRadius: 1
                         }));
                     }
                     for (let i = 1; i <= 3; i++) {
                         const mx = 6 + i * paneW;
                         group.add(new Konva.Line({
-                            points: [mx, 3, mx, h - 3],
-                            stroke: '#334155', strokeWidth: 2.5
+                            points: [mx, 3, mx, h - 7],
+                            stroke: '#334155', strokeWidth: 2
                         }));
                     }
                     group.add(new Konva.Text({
-                        text: `CỬA SỔ 4 CÁNH (W4 #${id})`,
-                        x: 0, y: h - 14, width: w,
+                        text: `CỬA SỔ 4 CÁNH #${id}`,
+                        x: 0, y: h - 16, width: w,
                         fontSize: 8, fontFamily: 'Inter, sans-serif', fontStyle: 'bold',
                         fill: '#a5f3fc', align: 'center', listening: false
                     }));
                 } else {
-                    const innerW = w - 10;
+                    const innerW = Math.max(6, w - 10);
                     const paneW = innerW / 2;
                     group.add(new Konva.Rect({
-                        x: 5, y: 5, width: paneW - 2, height: h - 12,
-                        fill: 'rgba(14, 165, 233, 0.22)', stroke: '#22d3ee', strokeWidth: 1.2, cornerRadius: 1
+                        x: 5, y: 5, width: Math.max(2, paneW - 2), height: Math.max(4, h - 14),
+                        fill: 'rgba(14, 165, 233, 0.22)', stroke: '#22d3ee', strokeWidth: 1, cornerRadius: 1
                     }));
                     group.add(new Konva.Rect({
-                        x: 7 + paneW, y: 5, width: paneW - 2, height: h - 12,
-                        fill: 'rgba(14, 165, 233, 0.22)', stroke: '#22d3ee', strokeWidth: 1.2, cornerRadius: 1
+                        x: 7 + paneW, y: 5, width: Math.max(2, paneW - 2), height: Math.max(4, h - 14),
+                        fill: 'rgba(14, 165, 233, 0.22)', stroke: '#22d3ee', strokeWidth: 1, cornerRadius: 1
                     }));
 
                     group.add(new Konva.Line({
-                        points: [10, 12, paneW, h - 20],
-                        stroke: 'rgba(255, 255, 255, 0.35)', strokeWidth: 2, lineCap: 'round', listening: false
-                    }));
-                    group.add(new Konva.Line({
-                        points: [paneW + 12, 12, w - 8, h - 20],
-                        stroke: 'rgba(255, 255, 255, 0.35)', strokeWidth: 2, lineCap: 'round', listening: false
-                    }));
-
-                    group.add(new Konva.Line({
-                        points: [w / 2, 3, w / 2, h - 3],
-                        stroke: '#334155', strokeWidth: 3
+                        points: [w / 2, 3, w / 2, h - 7],
+                        stroke: '#334155', strokeWidth: 2
                     }));
                     group.add(new Konva.Circle({
-                        x: w / 2, y: h / 2, radius: 3, fill: '#f8fafc', stroke: '#94a3b8', strokeWidth: 0.5
+                        x: w / 2, y: h / 2, radius: 2.5, fill: '#f8fafc', stroke: '#94a3b8', strokeWidth: 0.5
                     }));
 
                     group.add(new Konva.Text({
-                        text: `CỬA SỔ 2 CÁNH (W2 #${id})`,
-                        x: 0, y: h - 14, width: w,
+                        text: `CỬA SỔ #${id}`,
+                        x: 0, y: h - 16, width: w,
                         fontSize: 8, fontFamily: 'Inter, sans-serif', fontStyle: 'bold',
                         fill: '#a5f3fc', align: 'center', listening: false
                     }));
@@ -3603,13 +3789,43 @@
             group.on('transformend', () => {
                 const scaleX = Math.abs(group.scaleX());
                 const scaleY = Math.abs(group.scaleY());
-                const newW = Math.max(30, Math.round(group.getAttr('windowWidth') * scaleX));
-                const newH = Math.max(30, Math.round(group.getAttr('windowHeight') * scaleY));
+                let newW = Math.max(30, Math.round((group.getAttr('windowWidth') || width) * scaleX));
+                let newH = Math.max(30, Math.round((group.getAttr('windowHeight') || height) * scaleY));
+                if (snapToGrid) {
+                    newW = snapValue(newW);
+                    newH = snapValue(newH);
+                }
+                newW = Math.min(wallLength, newW);
+                newH = Math.min(wallHeight, newH);
                 group.scaleX(1);
                 group.scaleY(1);
                 group.setAttr('windowWidth', newW);
                 group.setAttr('windowHeight', newH);
+                const cx = Math.max(0, Math.min(wallLength - newW, group.x()));
+                const cy = Math.max(0, Math.min(wallHeight - newH, group.y()));
+                group.position({ x: cx, y: cy });
                 buildWindowElevationShapes(newW, newH);
+                if (selectedNode === group) {
+                    transformer.forceUpdate();
+                }
+                mainLayer.batchDraw();
+            });
+
+            group.on('dragend', () => {
+                let localX = group.x();
+                let localY = group.y();
+                if (snapToGrid) {
+                    localX = snapValue(localX);
+                    localY = snapValue(localY);
+                }
+                const w = group.getAttr('windowWidth') || width;
+                const h = group.getAttr('windowHeight') || height;
+                localX = Math.max(0, Math.min(wallLength - w, localX));
+                localY = Math.max(0, Math.min(wallHeight - h, localY));
+                group.position({ x: localX, y: localY });
+                if (selectedNode === group) {
+                    transformer.forceUpdate();
+                }
                 mainLayer.batchDraw();
             });
 

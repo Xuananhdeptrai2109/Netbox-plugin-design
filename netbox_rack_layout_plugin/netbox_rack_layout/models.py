@@ -66,8 +66,11 @@ class LayoutObject(models.Model):
         ('smartlock', 'Smart Lock'),
         ('wall', 'Wall'),
         ('location', 'Location'),
-        ('door_1', 'Cửa chính 1 cánh'),
-        ('door_2', 'Cửa chính 2 cánh'),
+        ('door_1', 'Cửa chính 1 cánh (Mặt bằng)'),
+        ('door_2', 'Cửa sổ (Mặt bằng)'),
+        ('window_floor', 'Cửa sổ (Mặt bằng)'),
+        ('door_wall', 'Cửa chính (Trên tường)'),
+        ('window_wall', 'Cửa sổ (Trên tường)'),
         ('window_2', 'Cửa sổ 2 cánh'),
         ('window_4', 'Cửa sổ 4 cánh'),
     )
