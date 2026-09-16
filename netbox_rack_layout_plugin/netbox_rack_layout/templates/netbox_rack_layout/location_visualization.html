@@ -677,6 +677,8 @@
         let allSmartLocks = [];
         let placedObjects = new Map();
         let wallCounter = 0;
+        let doorCounter = 0;
+        let windowCounter = 0;
 
         // ===== STATUS COLORS =====
         const RACK_STATUS_COLORS = {
@@ -1078,7 +1080,7 @@
             placedObjects.clear();
 
             savedObjects.forEach(obj => {
-                if (obj.parent_type === 'wall') {
+                if (obj.parent_type === 'wall' && obj.object_type === 'asset') {
                     // Mark as placed in sidebar list but do not draw on floor stage
                     const key = `${obj.object_type}_${obj.object_id}`;
                     placedObjects.set(key, true);
@@ -1112,6 +1114,12 @@
                     };
                     addWallToCanvas(wallItem, obj.x, obj.y, obj.rotation, obj.z_index || 240);
                     if (obj.object_id > wallCounter) wallCounter = obj.object_id;
+                } else if (obj.object_type === 'door_1' || obj.object_type === 'door_2') {
+                    addDoorToCanvas(obj.object_type, obj.object_id, obj.x, obj.y, obj.rotation, obj.width, obj.height, obj.parent_id);
+                    if (obj.object_id > doorCounter) doorCounter = obj.object_id;
+                } else if (obj.object_type === 'window_2' || obj.object_type === 'window_4') {
+                    addWindowToCanvas(obj.object_type, obj.object_id, obj.x, obj.y, obj.rotation, obj.width, obj.height, obj.parent_id);
+                    if (obj.object_id > windowCounter) windowCounter = obj.object_id;
                 }
             });
 
@@ -1141,6 +1149,8 @@
                 allSmartLocks = data.smartlocks || [];
 
                 wallCounter = 0;
+                doorCounter = 0;
+                windowCounter = 0;
                 wallAssetsMap.clear();
 
                 const savedObjects = data.objects || [];
@@ -1149,9 +1159,9 @@
                     emptyState.style.display = '';
                 }
 
-                // Populate wallAssetsMap first
+                // Populate wallAssetsMap first (assets only)
                 savedObjects.forEach(obj => {
-                    if (obj.parent_type === 'wall') {
+                    if (obj.parent_type === 'wall' && obj.object_type === 'asset') {
                         const parentWallId = parseInt(obj.parent_id, 10);
                         if (!wallAssetsMap.has(parentWallId)) {
                             wallAssetsMap.set(parentWallId, []);
@@ -1186,30 +1196,34 @@
         function renderGenericItems(query) {
             itemListEl.innerHTML = '';
 
-            const wallItems = [
-                { wallType: 'h', name: 'Tường (🧱)', meta: 'Kéo để thêm tường', icon: '🧱' },
+            const genericItems = [
+                { type: 'wall', subType: 'wall', name: 'Tường (🧱)', meta: 'Kéo để thêm tường', icon: '🧱', bg: '#57606f', wallType: 'h' },
+                { type: 'door_1', subType: 'door_1', name: 'Cửa chính 1 cánh (🚪)', meta: 'Cửa đi 1 cánh mở quay', icon: '🚪', bg: '#2563eb' },
+                { type: 'door_2', subType: 'door_2', name: 'Cửa chính 2 cánh (🚪🚪)', meta: 'Cửa đi 2 cánh mở đôi', icon: '🚪', bg: '#1d4ed8' },
+                { type: 'window_2', subType: 'window_2', name: 'Cửa sổ 2 cánh (🪟)', meta: 'Cửa sổ tiêu chuẩn 2 cánh', icon: '🪟', bg: '#0891b2' },
+                { type: 'window_4', subType: 'window_4', name: 'Cửa sổ 4 cánh (🪟🪟)', meta: 'Cửa sổ lớn 4 cánh', icon: '🪟', bg: '#0284c7' },
             ];
 
-            wallItems.forEach(wallDef => {
-                const searchText = `wall tường ${wallDef.name}`.toLowerCase();
+            genericItems.forEach(itemDef => {
+                const searchText = `${itemDef.name} ${itemDef.meta} ${itemDef.subType}`.toLowerCase();
                 if (query && !searchText.includes(query)) return;
 
                 const el = document.createElement('div');
                 el.className = 'rl-item';
-                el.dataset.type = 'wall';
+                el.dataset.type = itemDef.subType;
                 el.draggable = true;
-                el.setAttribute('title', `${wallDef.name} (${wallDef.meta})`);
+                el.setAttribute('title', `${itemDef.name} (${itemDef.meta})`);
                 el.innerHTML = `
-                    <div class="rl-item-icon" style="background:#57606f">🧱</div>
+                    <div class="rl-item-icon" style="background:${itemDef.bg}">${itemDef.icon}</div>
                     <div class="rl-item-info">
-                        <div class="rl-item-name">${wallDef.name}</div>
-                        <div class="rl-item-meta">${wallDef.meta}</div>
+                        <div class="rl-item-name">${itemDef.name}</div>
+                        <div class="rl-item-meta">${itemDef.meta}</div>
                     </div>
                 `;
                 el.addEventListener('dragstart', (e) => {
                     e.dataTransfer.setData('application/json', JSON.stringify({
-                        type: 'wall',
-                        item: { id: 0, wallType: wallDef.wallType }
+                        type: itemDef.subType,
+                        item: { id: 0, wallType: itemDef.wallType || 'h', subType: itemDef.subType }
                     }));
                     e.dataTransfer.effectAllowed = 'copy';
                 });
@@ -1315,15 +1329,23 @@
             if (!raw) return;
             const { type, item } = JSON.parse(raw);
 
-            // In wall view, we only allow dropping assets (Racks or walls make no sense on a wall elevation)
-            if (currentViewMode === 'wall' && type !== 'asset') {
-                showToast('Chỉ có thể đặt Asset (Tài sản) lên tường!', 'warning');
+            // In wall view, we allow dropping assets, doors, and windows
+            const isDoor = (type === 'door_1' || type === 'door_2');
+            const isWindow = (type === 'window_2' || type === 'window_4');
+            if (currentViewMode === 'wall' && type !== 'asset' && !isDoor && !isWindow) {
+                showToast('Chỉ có thể đặt Asset, Cửa chính hoặc Cửa sổ lên tường!', 'warning');
                 return;
             }
 
             if (type === 'wall') {
                 wallCounter++;
                 item.id = wallCounter;
+            } else if (isDoor) {
+                doorCounter++;
+                item.id = doorCounter;
+            } else if (isWindow) {
+                windowCounter++;
+                item.id = windowCounter;
             }
 
             const key = `${type}_${item.id}`;
@@ -1350,10 +1372,15 @@
                     localY = Math.round(localY / gridSize) * gridSize;
                 }
                 
-                localX = Math.max(0, Math.min(wallLength - 110, localX));
-                localY = Math.max(0, Math.min(wallHeight - 70, localY));
-
-                addAssetToWallCanvas(item, localX, localY);
+                if (isDoor) {
+                    addDoorToWallCanvas(type, item.id, localX, activeWallId);
+                } else if (isWindow) {
+                    addWindowToWallCanvas(type, item.id, localX, localY, activeWallId);
+                } else if (type === 'asset') {
+                    localX = Math.max(0, Math.min(wallLength - 110, localX));
+                    localY = Math.max(0, Math.min(wallHeight - 70, localY));
+                    addAssetToWallCanvas(item, localX, localY);
+                }
             } else {
                 worldX = snapValue(worldX);
                 worldY = snapValue(worldY);
@@ -1366,6 +1393,10 @@
                     addAssetToCanvas(item, worldX, worldY, 0, 0);
                 } else if (type === 'wall') {
                     addWallToCanvas(item, worldX, worldY, 0, 0);
+                } else if (isDoor) {
+                    addDoorToCanvas(type, item.id, worldX, worldY, 0);
+                } else if (isWindow) {
+                    addWindowToCanvas(type, item.id, worldX, worldY, 0);
                 }
             }
             mainLayer.batchDraw();
@@ -1772,10 +1803,344 @@
             placedObjects.set(key, group);
         }
 
+        // ===== SNAP DOOR / WINDOW TO WALL =====
+        function snapItemToWall(group) {
+            const objType = group.getAttr('objectType');
+            const isDoor = (objType === 'door_1' || objType === 'door_2');
+            const isWindow = (objType === 'window_2' || objType === 'window_4');
+            if (!isDoor && !isWindow) return;
+
+            const w = group.getAttr('customWidth') || (objType === 'door_1' ? 50 : (objType === 'door_2' ? 90 : (objType === 'window_2' ? 80 : 140)));
+            const gx = group.x();
+            const gy = group.y();
+            const snapThreshold = 30;
+
+            let snappedWall = null;
+            let bestDist = Infinity;
+            let snapPos = { x: gx, y: gy, rot: group.rotation() };
+
+            mainLayer.find('.layout-object').forEach(other => {
+                if (other.getAttr('objectType') !== 'wall') return;
+                const wx = other.x();
+                const wy = other.y();
+                const ww = other.getAttr('wallWidth') || 160;
+                const wh = other.getAttr('wallHeight') || 15;
+                const wt = other.getAttr('wallType') || (wh > ww ? 'v' : 'h');
+
+                if (wt === 'h') {
+                    const distY = Math.abs(gy - wy);
+                    if (distY < snapThreshold && gx + w >= wx - 15 && gx <= wx + ww + 15) {
+                        if (distY < bestDist) {
+                            bestDist = distY;
+                            snappedWall = other;
+                            const clampedX = Math.max(wx, Math.min(wx + ww - w, gx));
+                            snapPos = { x: clampedX, y: wy, rot: 0 };
+                        }
+                    }
+                } else {
+                    const distX = Math.abs(gx - wx);
+                    if (distX < snapThreshold && gy + w >= wy - 15 && gy <= wy + wh + 15) {
+                        if (distX < bestDist) {
+                            bestDist = distX;
+                            snappedWall = other;
+                            const clampedY = Math.max(wy, Math.min(wy + wh - w, gy));
+                            snapPos = { x: wx, y: clampedY, rot: 90 };
+                        }
+                    }
+                }
+            });
+
+            if (snappedWall) {
+                group.position({ x: snapPos.x, y: snapPos.y });
+                group.rotation(snapPos.rot);
+                group.setAttr('parentId', snappedWall.getAttr('objectId'));
+                group.setAttr('parentType', 'wall');
+            } else {
+                group.setAttr('parentId', null);
+                group.setAttr('parentType', null);
+            }
+        }
+
+        // ===== ADD DOOR TO CANVAS (LOCATION FLOOR PLAN) =====
+        function addDoorToCanvas(type, id, x, y, rotation, customWidth, customHeight, parentId) {
+            const key = `${type}_${id}`;
+            const isDouble = (type === 'door_2');
+            const defW = isDouble ? 90 : 50;
+            const defH = isDouble ? 45 : 50;
+            const width = customWidth || defW;
+            const height = customHeight || defH;
+
+            const group = new Konva.Group({
+                x, y, rotation: rotation || 0, draggable: true, name: 'layout-object',
+                dragBoundFunc: function(pos) {
+                    return { x: Math.max(stage.x(), pos.x), y: Math.max(stage.y(), pos.y) };
+                }
+            });
+            group.setAttr('objectType', type);
+            group.setAttr('objectId', id);
+            group.setAttr('doorWidth', width);
+            group.setAttr('doorHeight', height);
+            group.setAttr('customWidth', width);
+            group.setAttr('customHeight', height);
+            group.setAttr('baseX', x);
+            group.setAttr('baseY', y);
+            if (parentId) {
+                group.setAttr('parentId', parentId);
+                group.setAttr('parentType', 'wall');
+            }
+
+            function buildDoorShapes(w, h) {
+                group.destroyChildren();
+
+                // Drag/hit area
+                group.add(new Konva.Rect({
+                    x: 0, y: 0, width: w, height: h,
+                    fill: 'rgba(37, 99, 235, 0.05)',
+                    name: 'door-hit'
+                }));
+
+                const postW = 8;
+                const postH = 15;
+                // Left jamb
+                group.add(new Konva.Rect({
+                    x: 0, y: 0, width: postW, height: postH,
+                    fill: '#1e293b', stroke: '#3b82f6', strokeWidth: 1.5, cornerRadius: 1
+                }));
+                // Right jamb
+                group.add(new Konva.Rect({
+                    x: w - postW, y: 0, width: postW, height: postH,
+                    fill: '#1e293b', stroke: '#3b82f6', strokeWidth: 1.5, cornerRadius: 1
+                }));
+
+                // Threshold line
+                group.add(new Konva.Line({
+                    points: [postW, postH / 2, w - postW, postH / 2],
+                    stroke: 'rgba(59, 130, 246, 0.4)', strokeWidth: 1, dash: [3, 3]
+                }));
+
+                if (isDouble) {
+                    const leafLen = (w - postW * 2) / 2;
+                    // Left leaf
+                    group.add(new Konva.Line({
+                        points: [postW, postH, postW, postH + leafLen],
+                        stroke: '#60a5fa', strokeWidth: 2.5
+                    }));
+                    group.add(new Konva.Circle({
+                        x: postW, y: postH, radius: 2.5, fill: '#93c5fd'
+                    }));
+                    group.add(new Konva.Arc({
+                        x: postW, y: postH,
+                        innerRadius: leafLen, outerRadius: leafLen,
+                        angle: 90, rotation: 0,
+                        stroke: 'rgba(96, 165, 250, 0.45)', strokeWidth: 1.5, dash: [3, 3]
+                    }));
+
+                    // Right leaf
+                    group.add(new Konva.Line({
+                        points: [w - postW, postH, w - postW, postH + leafLen],
+                        stroke: '#60a5fa', strokeWidth: 2.5
+                    }));
+                    group.add(new Konva.Circle({
+                        x: w - postW, y: postH, radius: 2.5, fill: '#93c5fd'
+                    }));
+                    group.add(new Konva.Arc({
+                        x: w - postW, y: postH,
+                        innerRadius: leafLen, outerRadius: leafLen,
+                        angle: 90, rotation: 90,
+                        stroke: 'rgba(96, 165, 250, 0.45)', strokeWidth: 1.5, dash: [3, 3]
+                    }));
+
+                    group.add(new Konva.Text({
+                        text: `D2 #${id}`,
+                        x: 0, y: postH + 4, width: w,
+                        fontSize: 9, fontFamily: 'Inter, sans-serif', fontStyle: 'bold',
+                        fill: 'rgba(147, 197, 253, 0.9)', align: 'center', listening: false
+                    }));
+                } else {
+                    const leafLen = w - postW * 2;
+                    group.add(new Konva.Line({
+                        points: [postW, postH, postW, postH + leafLen],
+                        stroke: '#60a5fa', strokeWidth: 2.5
+                    }));
+                    group.add(new Konva.Circle({
+                        x: postW, y: postH, radius: 2.5, fill: '#93c5fd'
+                    }));
+                    group.add(new Konva.Arc({
+                        x: postW, y: postH,
+                        innerRadius: leafLen, outerRadius: leafLen,
+                        angle: 90, rotation: 0,
+                        stroke: 'rgba(96, 165, 250, 0.45)', strokeWidth: 1.5, dash: [3, 3]
+                    }));
+
+                    group.add(new Konva.Text({
+                        text: `D1 #${id}`,
+                        x: postW + 6, y: postH + 4,
+                        fontSize: 9, fontFamily: 'Inter, sans-serif', fontStyle: 'bold',
+                        fill: 'rgba(147, 197, 253, 0.9)', listening: false
+                    }));
+                }
+            }
+
+            buildDoorShapes(width, height);
+
+            group.on('transformend', () => {
+                const scaleX = Math.abs(group.scaleX());
+                const newW = Math.max(30, Math.round(group.getAttr('doorWidth') * scaleX));
+                group.scaleX(1);
+                group.scaleY(1);
+                group.setAttr('doorWidth', newW);
+                group.setAttr('customWidth', newW);
+                buildDoorShapes(newW, group.getAttr('doorHeight'));
+                snapItemToWall(group);
+                mainLayer.batchDraw();
+            });
+
+            group.on('dragend', () => {
+                let curX = group.x();
+                let curY = group.y();
+                if (snapToGrid) { curX = snapValue(curX); curY = snapValue(curY); }
+                group.position({ x: Math.max(0, curX), y: Math.max(0, curY) });
+                snapItemToWall(group);
+                group.setAttr('baseX', group.x());
+                group.setAttr('baseY', group.y());
+                mainLayer.batchDraw();
+            });
+
+            setupGroupInteractions(group);
+            mainLayer.add(group);
+            placedObjects.set(key, group);
+        }
+
+        // ===== ADD WINDOW TO CANVAS (LOCATION FLOOR PLAN) =====
+        function addWindowToCanvas(type, id, x, y, rotation, customWidth, customHeight, parentId) {
+            const key = `${type}_${id}`;
+            const isQuad = (type === 'window_4');
+            const defW = isQuad ? 140 : 80;
+            const defH = 15;
+            const width = customWidth || defW;
+            const height = customHeight || defH;
+
+            const group = new Konva.Group({
+                x, y, rotation: rotation || 0, draggable: true, name: 'layout-object',
+                dragBoundFunc: function(pos) {
+                    return { x: Math.max(stage.x(), pos.x), y: Math.max(stage.y(), pos.y) };
+                }
+            });
+            group.setAttr('objectType', type);
+            group.setAttr('objectId', id);
+            group.setAttr('windowWidth', width);
+            group.setAttr('windowHeight', height);
+            group.setAttr('customWidth', width);
+            group.setAttr('customHeight', height);
+            group.setAttr('baseX', x);
+            group.setAttr('baseY', y);
+            if (parentId) {
+                group.setAttr('parentId', parentId);
+                group.setAttr('parentType', 'wall');
+            }
+
+            function buildWindowShapes(w, h) {
+                group.destroyChildren();
+
+                group.add(new Konva.Rect({
+                    x: 0, y: 0, width: w, height: h,
+                    fill: 'rgba(6, 182, 212, 0.05)',
+                    name: 'window-hit'
+                }));
+
+                const postW = 6;
+                // Left jamb
+                group.add(new Konva.Rect({
+                    x: 0, y: 0, width: postW, height: h,
+                    fill: '#1e293b', stroke: '#0891b2', strokeWidth: 1.5, cornerRadius: 1
+                }));
+                // Right jamb
+                group.add(new Konva.Rect({
+                    x: w - postW, y: 0, width: postW, height: h,
+                    fill: '#1e293b', stroke: '#0891b2', strokeWidth: 1.5, cornerRadius: 1
+                }));
+
+                // Wall outer lines
+                group.add(new Konva.Line({
+                    points: [postW, 0, w - postW, 0],
+                    stroke: '#475569', strokeWidth: 1.5
+                }));
+                group.add(new Konva.Line({
+                    points: [postW, h, w - postW, h],
+                    stroke: '#475569', strokeWidth: 1.5
+                }));
+
+                // Glass body
+                group.add(new Konva.Rect({
+                    x: postW, y: 2, width: w - postW * 2, height: h - 4,
+                    fill: 'rgba(6, 182, 212, 0.28)', stroke: '#22d3ee', strokeWidth: 1.2, cornerRadius: 1
+                }));
+
+                if (isQuad) {
+                    const innerW = w - postW * 2;
+                    const step = innerW / 4;
+                    for (let i = 1; i <= 3; i++) {
+                        const divX = postW + step * i;
+                        group.add(new Konva.Line({
+                            points: [divX, 1, divX, h - 1],
+                            stroke: '#22d3ee', strokeWidth: 2
+                        }));
+                    }
+                    group.add(new Konva.Text({
+                        text: `W4 #${id}`,
+                        x: 0, y: h / 2 - 4, width: w,
+                        fontSize: 8, fontFamily: 'Inter, sans-serif', fontStyle: 'bold',
+                        fill: '#a5f3fc', align: 'center', listening: false
+                    }));
+                } else {
+                    const midX = w / 2;
+                    group.add(new Konva.Line({
+                        points: [midX, 1, midX, h - 1],
+                        stroke: '#22d3ee', strokeWidth: 2
+                    }));
+                    group.add(new Konva.Text({
+                        text: `W2 #${id}`,
+                        x: 0, y: h / 2 - 4, width: w,
+                        fontSize: 8, fontFamily: 'Inter, sans-serif', fontStyle: 'bold',
+                        fill: '#a5f3fc', align: 'center', listening: false
+                    }));
+                }
+            }
+
+            buildWindowShapes(width, height);
+
+            group.on('transformend', () => {
+                const scaleX = Math.abs(group.scaleX());
+                const newW = Math.max(30, Math.round(group.getAttr('windowWidth') * scaleX));
+                group.scaleX(1);
+                group.scaleY(1);
+                group.setAttr('windowWidth', newW);
+                group.setAttr('customWidth', newW);
+                buildWindowShapes(newW, group.getAttr('windowHeight'));
+                snapItemToWall(group);
+                mainLayer.batchDraw();
+            });
+
+            group.on('dragend', () => {
+                let curX = group.x();
+                let curY = group.y();
+                if (snapToGrid) { curX = snapValue(curX); curY = snapValue(curY); }
+                group.position({ x: Math.max(0, curX), y: Math.max(0, curY) });
+                snapItemToWall(group);
+                group.setAttr('baseX', group.x());
+                group.setAttr('baseY', group.y());
+                mainLayer.batchDraw();
+            });
+
+            setupGroupInteractions(group);
+            mainLayer.add(group);
+            placedObjects.set(key, group);
+        }
+
         // Helper to animate zoom-in/out on hover
         function animateHover(group, isHover) {
             const objType = group.getAttr('objectType');
-            if (objType === 'wall') return;
+            if (['wall', 'door_1', 'door_2', 'window_2', 'window_4'].includes(objType)) return;
 
             let width = 110, height = 70;
             if (objType === 'rack') { width = 105; height = 140; }
@@ -1801,7 +2166,7 @@
 
         function deactivateGroupHover(group) {
             const objType = group.getAttr('objectType');
-            if (objType === 'wall') return;
+            if (['wall', 'door_1', 'door_2', 'window_2', 'window_4'].includes(objType)) return;
             const body = group.findOne('.' + objType + '-body');
             if (body) {
                 body.strokeWidth(objType === 'rack' ? 2 : 1.5);
@@ -1819,7 +2184,7 @@
                 group.scale({ x: 1, y: 1 });
                 group.x(group.getAttr('baseX'));
                 group.y(group.getAttr('baseY'));
-                if (objType !== 'wall') {
+                if (objType !== 'wall' && !['door_1', 'door_2', 'window_2', 'window_4'].includes(objType)) {
                     const body = group.findOne('.' + objType + '-body');
                     if (body) { body.strokeWidth(objType === 'rack' ? 2 : 1.5); body.shadowBlur(0); body.shadowOpacity(0); }
                     if (tooltipEl) tooltipEl.classList.remove('show');
@@ -2021,7 +2386,7 @@
 
             group.on('mouseleave', () => {
                 const objType = group.getAttr('objectType');
-                if (objType === 'wall') return;
+                if (['wall', 'door_1', 'door_2', 'window_2', 'window_4'].includes(objType)) return;
 
                 const pos = stage.getPointerPosition();
                 const intersection = pos ? stage.getIntersection(pos) : null;
@@ -2058,7 +2423,10 @@
             const isAsset = (objType === 'asset');
             const isWallElevation = (objType === 'wall_elevation');
 
-            transformer.resizeEnabled(isWall || isAsset || isWallElevation);
+            const isDoor = (objType === 'door_1' || objType === 'door_2');
+            const isWindow = (objType === 'window_2' || objType === 'window_4');
+
+            transformer.resizeEnabled(isWall || isAsset || isWallElevation || isDoor || isWindow);
             transformer.rotateEnabled(!isWall && !isWallElevation && currentViewMode !== 'wall');
 
             if (isWall) {
@@ -2069,6 +2437,12 @@
                 transformer.enabledAnchors(['top-left', 'top-center', 'top-right', 'middle-right', 'bottom-right', 'bottom-center', 'bottom-left', 'middle-left']);
             } else if (isAsset) {
                 transformer.enabledAnchors(['top-left', 'top-center', 'top-right', 'middle-right', 'bottom-right', 'bottom-center', 'bottom-left', 'middle-left']);
+            } else if (isDoor || isWindow) {
+                if (currentViewMode === 'wall') {
+                    transformer.enabledAnchors(['top-center', 'middle-left', 'middle-right', 'bottom-center']);
+                } else {
+                    transformer.enabledAnchors(['middle-left', 'middle-right']);
+                }
             } else {
                 transformer.enabledAnchors([]);
             }
@@ -2152,6 +2526,11 @@
                     } else if (objType === 'asset') {
                         entry.width = Math.round((group.getAttr('assetWidth') || 0) * 100) / 100;
                         entry.height = Math.round((group.getAttr('assetHeight') || 0) * 100) / 100;
+                    } else if (['door_1', 'door_2', 'window_2', 'window_4'].includes(objType)) {
+                        entry.width = Math.round((group.getAttr('customWidth') || group.getAttr('doorWidth') || group.getAttr('windowWidth') || 0) * 100) / 100;
+                        entry.height = Math.round((group.getAttr('customHeight') || group.getAttr('doorHeight') || group.getAttr('windowHeight') || 0) * 100) / 100;
+                        entry.parent_type = group.getAttr('parentType') || null;
+                        entry.parent_id = group.getAttr('parentId') || null;
                     }
                     objects.push(entry);
                 });
@@ -2207,6 +2586,41 @@
                         }
                         wallInFloor.z_index = currentWallH || 240;
                     }
+
+                    // Đồng bộ cửa chính và cửa sổ từ mặt đứng vào floorPlanObjects
+                    floorPlanObjects = floorPlanObjects.filter(o => !(
+                        ['door_1', 'door_2', 'window_2', 'window_4'].includes(o.object_type) &&
+                        o.parent_type === 'wall' &&
+                        parseInt(o.parent_id, 10) === activeWallId
+                    ));
+
+                    wallBgGroup.find('.layout-object').forEach(group => {
+                        const objType = group.getAttr('objectType');
+                        if (['door_1', 'door_2', 'window_2', 'window_4'].includes(objType)) {
+                            const localX = group.x();
+                            const w = group.getAttr('doorWidth') || group.getAttr('windowWidth') || group.width();
+                            const h = group.getAttr('doorHeight') || group.getAttr('windowHeight') || group.height();
+                            const isV = (wallInFloor && wallInFloor.height > wallInFloor.width);
+                            const wallX = wallInFloor ? wallInFloor.x : 0;
+                            const wallY = wallInFloor ? wallInFloor.y : 0;
+                            const floorX = isV ? wallX : (wallX + localX);
+                            const floorY = isV ? (wallY + localX) : wallY;
+                            const rot = isV ? 90 : 0;
+
+                            floorPlanObjects.push({
+                                object_type: objType,
+                                object_id: group.getAttr('objectId'),
+                                x: Math.round(floorX * 100) / 100,
+                                y: Math.round(floorY * 100) / 100,
+                                rotation: rot,
+                                width: Math.round(w * 100) / 100,
+                                height: Math.round(h * 100) / 100,
+                                parent_type: 'wall',
+                                parent_id: activeWallId,
+                                z_index: Math.round((currentWallH || 240) - group.y() - h)
+                            });
+                        }
+                    });
                 }
 
                 // 2. Gather from floorPlanObjects (which has floor items and other wall assets)
@@ -2329,6 +2743,40 @@
                     }
                     wallInFloor.z_index = currentWallH || 240;
                 }
+                // Đồng bộ cửa chính và cửa sổ từ mặt đứng vào floorPlanObjects
+                floorPlanObjects = floorPlanObjects.filter(o => !(
+                    ['door_1', 'door_2', 'window_2', 'window_4'].includes(o.object_type) &&
+                    o.parent_type === 'wall' &&
+                    parseInt(o.parent_id, 10) === activeWallId
+                ));
+
+                wallBgGroup.find('.layout-object').forEach(group => {
+                    const objType = group.getAttr('objectType');
+                    if (['door_1', 'door_2', 'window_2', 'window_4'].includes(objType)) {
+                        const localX = group.x();
+                        const w = group.getAttr('doorWidth') || group.getAttr('windowWidth') || group.width();
+                        const h = group.getAttr('doorHeight') || group.getAttr('windowHeight') || group.height();
+                        const isV = (wallInFloor && wallInFloor.height > wallInFloor.width);
+                        const wallX = wallInFloor ? wallInFloor.x : 0;
+                        const wallY = wallInFloor ? wallInFloor.y : 0;
+                        const floorX = isV ? wallX : (wallX + localX);
+                        const floorY = isV ? (wallY + localX) : wallY;
+                        const rot = isV ? 90 : 0;
+
+                        floorPlanObjects.push({
+                            object_type: objType,
+                            object_id: group.getAttr('objectId'),
+                            x: Math.round(floorX * 100) / 100,
+                            y: Math.round(floorY * 100) / 100,
+                            rotation: rot,
+                            width: Math.round(w * 100) / 100,
+                            height: Math.round(h * 100) / 100,
+                            parent_type: 'wall',
+                            parent_id: activeWallId,
+                            z_index: Math.round((currentWallH || 240) - group.y() - h)
+                        });
+                    }
+                });
             }
 
             const savedObjects = getCurrentLayoutObjects();
@@ -2547,6 +2995,40 @@
                 });
             }
 
+            // Add doors and windows belonging to this wall
+            const wallInFloor = floorPlanObjects.find(o => o.object_type === 'wall' && o.object_id === activeWallId);
+            const wallX = wallInFloor ? wallInFloor.x : wallGroup.x();
+            const wallY = wallInFloor ? wallInFloor.y : wallGroup.y();
+
+            floorPlanObjects.forEach(obj => {
+                if (!['door_1', 'door_2', 'window_2', 'window_4'].includes(obj.object_type)) return;
+                const isAttached = (obj.parent_type === 'wall' && parseInt(obj.parent_id, 10) === activeWallId);
+                let localAlongWall = null;
+                if (isAttached) {
+                    localAlongWall = isV ? (obj.y - wallY) : (obj.x - wallX);
+                } else {
+                    if (isV) {
+                        if (Math.abs(obj.x - wallX) <= 30 && obj.y >= wallY - 15 && obj.y <= wallY + wallLength + 15) {
+                            localAlongWall = obj.y - wallY;
+                        }
+                    } else {
+                        if (Math.abs(obj.y - wallY) <= 30 && obj.x >= wallX - 15 && obj.x <= wallX + wallLength + 15) {
+                            localAlongWall = obj.x - wallX;
+                        }
+                    }
+                }
+
+                if (localAlongWall !== null) {
+                    const clampedAlong = Math.max(0, Math.min(wallLength - (obj.width || 75), localAlongWall));
+                    if (obj.object_type === 'door_1' || obj.object_type === 'door_2') {
+                        addDoorToWallCanvas(obj.object_type, obj.object_id, clampedAlong, activeWallId, obj.width, obj.height);
+                    } else if (obj.object_type === 'window_2' || obj.object_type === 'window_4') {
+                        const localY = obj.z_index ? (wallHeight - obj.z_index - (obj.height || 90)) : undefined;
+                        addWindowToWallCanvas(obj.object_type, obj.object_id, clampedAlong, localY, activeWallId, obj.width, obj.height);
+                    }
+                }
+            });
+
             mainLayer.batchDraw();
             renderSidebarLists();
             drawGrid();
@@ -2741,6 +3223,338 @@
             group.on('dblclick dbltap', (e) => {
                 e.cancelBubble = true;
                 window.open(`/plugins/netbox-asset-management/assets/${assetInfo.id}/`, '_blank');
+            });
+
+            wallBgGroup.add(group);
+            placedObjects.set(key, group);
+            mainLayer.batchDraw();
+        }
+
+        // ===== ADD DOOR TO WALL CANVAS (WALL ELEVATION) =====
+        function addDoorToWallCanvas(type, id, localX, activeWallId, customWidth, customHeight) {
+            const key = `${type}_${id}`;
+            const isDouble = (type === 'door_2');
+            const defW = isDouble ? 140 : 75;
+            const defH = 200;
+            const width = customWidth || defW;
+            const height = customHeight || defH;
+
+            const wallBgGroup = mainLayer.findOne('.wall-bg-group');
+            if (!wallBgGroup) return;
+
+            const wallBgRect = wallBgGroup.findOne('.wall-bg-rect');
+            const wallLength = wallBgRect.width();
+            const wallHeight = wallBgRect.height();
+
+            const localY = Math.max(0, wallHeight - height);
+            const clampedX = Math.max(0, Math.min(wallLength - width, localX !== undefined ? localX : 30));
+
+            const group = new Konva.Group({
+                x: clampedX,
+                y: localY,
+                draggable: true,
+                name: 'layout-object',
+                dragBoundFunc: function(pos) {
+                    const transform = wallBgGroup.getAbsoluteTransform().copy().invert();
+                    const localPos = transform.point(pos);
+                    const w = group.getAttr('doorWidth') || width;
+                    const h = group.getAttr('doorHeight') || height;
+                    const cx = Math.max(0, Math.min(wallLength - w, localPos.x));
+                    const cy = Math.max(0, wallHeight - h);
+                    return wallBgGroup.getAbsoluteTransform().point({ x: cx, y: cy });
+                }
+            });
+            group.setAttr('objectType', type);
+            group.setAttr('objectId', id);
+            group.setAttr('doorWidth', width);
+            group.setAttr('doorHeight', height);
+            group.setAttr('parentId', activeWallId);
+            group.setAttr('parentType', 'wall');
+
+            function buildDoorElevationShapes(w, h) {
+                group.destroyChildren();
+
+                // Drop shadow
+                group.add(new Konva.Rect({
+                    x: 3, y: 3, width: w, height: h,
+                    fill: 'rgba(0,0,0,0.4)', cornerRadius: 3
+                }));
+
+                // Outer frame
+                group.add(new Konva.Rect({
+                    x: 0, y: 0, width: w, height: h,
+                    fill: '#151922', stroke: '#3b82f6', strokeWidth: 3, cornerRadius: 2,
+                    name: 'door-body'
+                }));
+
+                if (isDouble) {
+                    const leafW = (w - 8) / 2;
+                    group.add(new Konva.Rect({
+                        x: 3, y: 3, width: leafW, height: h - 6,
+                        fill: '#1e2536', stroke: '#334155', strokeWidth: 1.5, cornerRadius: 1
+                    }));
+                    group.add(new Konva.Rect({
+                        x: 5 + leafW, y: 3, width: leafW, height: h - 6,
+                        fill: '#1e2536', stroke: '#334155', strokeWidth: 1.5, cornerRadius: 1
+                    }));
+
+                    if (h > 120) {
+                        group.add(new Konva.Rect({
+                            x: 6, y: 6, width: w - 12, height: 26,
+                            fill: 'rgba(56, 189, 248, 0.18)', stroke: '#38bdf8', strokeWidth: 1, cornerRadius: 1
+                        }));
+                    }
+
+                    const panelTop = h > 120 ? 38 : 10;
+                    const panelH = (h - panelTop - 20) / 2;
+                    group.add(new Konva.Rect({
+                        x: 8, y: panelTop, width: leafW - 10, height: panelH,
+                        fill: '#141824', stroke: '#2e384d', strokeWidth: 1.5, cornerRadius: 2
+                    }));
+                    group.add(new Konva.Rect({
+                        x: 8, y: panelTop + panelH + 8, width: leafW - 10, height: panelH,
+                        fill: '#141824', stroke: '#2e384d', strokeWidth: 1.5, cornerRadius: 2
+                    }));
+
+                    group.add(new Konva.Rect({
+                        x: 7 + leafW, y: panelTop, width: leafW - 10, height: panelH,
+                        fill: '#141824', stroke: '#2e384d', strokeWidth: 1.5, cornerRadius: 2
+                    }));
+                    group.add(new Konva.Rect({
+                        x: 7 + leafW, y: panelTop + panelH + 8, width: leafW - 10, height: panelH,
+                        fill: '#141824', stroke: '#2e384d', strokeWidth: 1.5, cornerRadius: 2
+                    }));
+
+                    const handleY = panelTop + panelH - 15;
+                    group.add(new Konva.Rect({
+                        x: leafW - 4, y: handleY, width: 3.5, height: 45,
+                        fill: '#f8fafc', stroke: '#94a3b8', strokeWidth: 0.5, cornerRadius: 1
+                    }));
+                    group.add(new Konva.Rect({
+                        x: leafW + 8, y: handleY, width: 3.5, height: 45,
+                        fill: '#f8fafc', stroke: '#94a3b8', strokeWidth: 0.5, cornerRadius: 1
+                    }));
+
+                    group.add(new Konva.Text({
+                        text: `CỬA CHÍNH 2 CÁNH (D2 #${id})`,
+                        x: 0, y: h - 18, width: w,
+                        fontSize: 9, fontFamily: 'Inter, sans-serif', fontStyle: 'bold',
+                        fill: '#93c5fd', align: 'center', listening: false
+                    }));
+                } else {
+                    group.add(new Konva.Rect({
+                        x: 3, y: 3, width: w - 6, height: h - 6,
+                        fill: '#1e2536', stroke: '#334155', strokeWidth: 1.5, cornerRadius: 1
+                    }));
+
+                    const panelW = w - 18;
+                    const panelH = (h - 40) / 2;
+                    group.add(new Konva.Rect({
+                        x: 9, y: 10, width: panelW, height: panelH,
+                        fill: '#141824', stroke: '#2e384d', strokeWidth: 1.5, cornerRadius: 2
+                    }));
+                    group.add(new Konva.Rect({
+                        x: 9, y: 18 + panelH, width: panelW, height: panelH,
+                        fill: '#141824', stroke: '#2e384d', strokeWidth: 1.5, cornerRadius: 2
+                    }));
+
+                    const handleY = 14 + panelH;
+                    group.add(new Konva.Rect({
+                        x: w - 16, y: handleY - 12, width: 5, height: 22,
+                        fill: '#cbd5e1', stroke: '#64748b', strokeWidth: 0.5, cornerRadius: 1
+                    }));
+                    group.add(new Konva.Line({
+                        points: [w - 14, handleY, w - 26, handleY],
+                        stroke: '#f8fafc', strokeWidth: 3.5, lineCap: 'round'
+                    }));
+
+                    group.add(new Konva.Text({
+                        text: `CỬA 1 CÁNH (D1 #${id})`,
+                        x: 0, y: h - 18, width: w,
+                        fontSize: 9, fontFamily: 'Inter, sans-serif', fontStyle: 'bold',
+                        fill: '#93c5fd', align: 'center', listening: false
+                    }));
+                }
+            }
+
+            buildDoorElevationShapes(width, height);
+
+            group.on('transformend', () => {
+                const scaleX = Math.abs(group.scaleX());
+                const scaleY = Math.abs(group.scaleY());
+                const newW = Math.max(40, Math.round(group.getAttr('doorWidth') * scaleX));
+                const newH = Math.max(60, Math.round(group.getAttr('doorHeight') * scaleY));
+                group.scaleX(1);
+                group.scaleY(1);
+                group.setAttr('doorWidth', newW);
+                group.setAttr('doorHeight', newH);
+                group.y(Math.max(0, wallHeight - newH));
+                buildDoorElevationShapes(newW, newH);
+                mainLayer.batchDraw();
+            });
+
+            group.on('dragstart', (e) => { e.cancelBubble = true; });
+            group.on('dragmove', (e) => { e.cancelBubble = true; });
+            group.on('click tap', (e) => { e.cancelBubble = true; selectNode(group); });
+            group.on('contextmenu', (e) => {
+                e.evt.preventDefault(); e.cancelBubble = true;
+                selectNode(group);
+                showContextMenu(e.evt.clientX, e.evt.clientY);
+            });
+
+            wallBgGroup.add(group);
+            placedObjects.set(key, group);
+            mainLayer.batchDraw();
+        }
+
+        // ===== ADD WINDOW TO WALL CANVAS (WALL ELEVATION) =====
+        function addWindowToWallCanvas(type, id, localX, localY, activeWallId, customWidth, customHeight) {
+            const key = `${type}_${id}`;
+            const isQuad = (type === 'window_4');
+            const defW = isQuad ? 150 : 85;
+            const defH = 90;
+            const width = customWidth || defW;
+            const height = customHeight || defH;
+
+            const wallBgGroup = mainLayer.findOne('.wall-bg-group');
+            if (!wallBgGroup) return;
+
+            const wallBgRect = wallBgGroup.findOne('.wall-bg-rect');
+            const wallLength = wallBgRect.width();
+            const wallHeight = wallBgRect.height();
+
+            const defaultY = Math.max(0, wallHeight - 80 - height);
+            const clampedX = Math.max(0, Math.min(wallLength - width, localX !== undefined ? localX : 40));
+            const clampedY = Math.max(0, Math.min(wallHeight - height - 10, localY !== undefined ? localY : defaultY));
+
+            const group = new Konva.Group({
+                x: clampedX,
+                y: clampedY,
+                draggable: true,
+                name: 'layout-object',
+                dragBoundFunc: function(pos) {
+                    const transform = wallBgGroup.getAbsoluteTransform().copy().invert();
+                    const localPos = transform.point(pos);
+                    const w = group.getAttr('windowWidth') || width;
+                    const h = group.getAttr('windowHeight') || height;
+                    const cx = Math.max(0, Math.min(wallLength - w, localPos.x));
+                    const cy = Math.max(0, Math.min(wallHeight - h - 5, localPos.y));
+                    return wallBgGroup.getAbsoluteTransform().point({ x: cx, y: cy });
+                }
+            });
+            group.setAttr('objectType', type);
+            group.setAttr('objectId', id);
+            group.setAttr('windowWidth', width);
+            group.setAttr('windowHeight', height);
+            group.setAttr('parentId', activeWallId);
+            group.setAttr('parentType', 'wall');
+
+            function buildWindowElevationShapes(w, h) {
+                group.destroyChildren();
+
+                group.add(new Konva.Rect({
+                    x: 3, y: 3, width: w, height: h,
+                    fill: 'rgba(0,0,0,0.3)', cornerRadius: 2
+                }));
+
+                group.add(new Konva.Rect({
+                    x: -4, y: h - 2, width: w + 8, height: 8,
+                    fill: '#475569', stroke: '#64748b', strokeWidth: 1.5, cornerRadius: 1
+                }));
+
+                group.add(new Konva.Rect({
+                    x: 0, y: 0, width: w, height: h,
+                    fill: '#151922', stroke: '#0891b2', strokeWidth: 3, cornerRadius: 2,
+                    name: 'window-body'
+                }));
+
+                if (isQuad) {
+                    const innerW = w - 12;
+                    const paneW = innerW / 4;
+                    for (let i = 0; i < 4; i++) {
+                        const px = 6 + i * paneW;
+                        group.add(new Konva.Rect({
+                            x: px + 1.5, y: 6, width: paneW - 3, height: h - 14,
+                            fill: 'rgba(14, 165, 233, 0.22)', stroke: '#22d3ee', strokeWidth: 1.2, cornerRadius: 1
+                        }));
+                        group.add(new Konva.Line({
+                            points: [px + 5, 12, px + paneW - 6, h - 22],
+                            stroke: 'rgba(255, 255, 255, 0.35)', strokeWidth: 1.5, lineCap: 'round', listening: false
+                        }));
+                    }
+                    for (let i = 1; i <= 3; i++) {
+                        const mx = 6 + i * paneW;
+                        group.add(new Konva.Line({
+                            points: [mx, 3, mx, h - 3],
+                            stroke: '#334155', strokeWidth: 2.5
+                        }));
+                    }
+                    group.add(new Konva.Text({
+                        text: `CỬA SỔ 4 CÁNH (W4 #${id})`,
+                        x: 0, y: h - 14, width: w,
+                        fontSize: 8, fontFamily: 'Inter, sans-serif', fontStyle: 'bold',
+                        fill: '#a5f3fc', align: 'center', listening: false
+                    }));
+                } else {
+                    const innerW = w - 10;
+                    const paneW = innerW / 2;
+                    group.add(new Konva.Rect({
+                        x: 5, y: 5, width: paneW - 2, height: h - 12,
+                        fill: 'rgba(14, 165, 233, 0.22)', stroke: '#22d3ee', strokeWidth: 1.2, cornerRadius: 1
+                    }));
+                    group.add(new Konva.Rect({
+                        x: 7 + paneW, y: 5, width: paneW - 2, height: h - 12,
+                        fill: 'rgba(14, 165, 233, 0.22)', stroke: '#22d3ee', strokeWidth: 1.2, cornerRadius: 1
+                    }));
+
+                    group.add(new Konva.Line({
+                        points: [10, 12, paneW, h - 20],
+                        stroke: 'rgba(255, 255, 255, 0.35)', strokeWidth: 2, lineCap: 'round', listening: false
+                    }));
+                    group.add(new Konva.Line({
+                        points: [paneW + 12, 12, w - 8, h - 20],
+                        stroke: 'rgba(255, 255, 255, 0.35)', strokeWidth: 2, lineCap: 'round', listening: false
+                    }));
+
+                    group.add(new Konva.Line({
+                        points: [w / 2, 3, w / 2, h - 3],
+                        stroke: '#334155', strokeWidth: 3
+                    }));
+                    group.add(new Konva.Circle({
+                        x: w / 2, y: h / 2, radius: 3, fill: '#f8fafc', stroke: '#94a3b8', strokeWidth: 0.5
+                    }));
+
+                    group.add(new Konva.Text({
+                        text: `CỬA SỔ 2 CÁNH (W2 #${id})`,
+                        x: 0, y: h - 14, width: w,
+                        fontSize: 8, fontFamily: 'Inter, sans-serif', fontStyle: 'bold',
+                        fill: '#a5f3fc', align: 'center', listening: false
+                    }));
+                }
+            }
+
+            buildWindowElevationShapes(width, height);
+
+            group.on('transformend', () => {
+                const scaleX = Math.abs(group.scaleX());
+                const scaleY = Math.abs(group.scaleY());
+                const newW = Math.max(30, Math.round(group.getAttr('windowWidth') * scaleX));
+                const newH = Math.max(30, Math.round(group.getAttr('windowHeight') * scaleY));
+                group.scaleX(1);
+                group.scaleY(1);
+                group.setAttr('windowWidth', newW);
+                group.setAttr('windowHeight', newH);
+                buildWindowElevationShapes(newW, newH);
+                mainLayer.batchDraw();
+            });
+
+            group.on('dragstart', (e) => { e.cancelBubble = true; });
+            group.on('dragmove', (e) => { e.cancelBubble = true; });
+            group.on('click tap', (e) => { e.cancelBubble = true; selectNode(group); });
+            group.on('contextmenu', (e) => {
+                e.evt.preventDefault(); e.cancelBubble = true;
+                selectNode(group);
+                showContextMenu(e.evt.clientX, e.evt.clientY);
             });
 
             wallBgGroup.add(group);

@@ -66,6 +66,10 @@ class LayoutObject(models.Model):
         ('smartlock', 'Smart Lock'),
         ('wall', 'Wall'),
         ('location', 'Location'),
+        ('door_1', 'Cửa chính 1 cánh'),
+        ('door_2', 'Cửa chính 2 cánh'),
+        ('window_2', 'Cửa sổ 2 cánh'),
+        ('window_4', 'Cửa sổ 4 cánh'),
     )
 
     layout = models.ForeignKey(
