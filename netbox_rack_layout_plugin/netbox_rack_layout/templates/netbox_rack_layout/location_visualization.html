@@ -597,19 +597,11 @@
     <div class="rl-main">
         <!-- TOOLBAR -->
         <div class="rl-toolbar">
-            <div class="rl-toolbar-group" id="rl-nav-group" style="display: none; align-items: center;">
+            <div class="rl-toolbar-group" id="rl-nav-group" style="display: none;">
                 <button class="rl-btn" id="rl-back-btn" style="background: rgba(108, 99, 255, 0.15); border-color: var(--rl-accent); color: var(--rl-text);">
                     ⬅ Quay lại Mặt bằng
                 </button>
                 <span id="rl-breadcrumb" style="font-size: 13px; font-weight: 600; color: var(--rl-text-muted); margin-left: 8px;"></span>
-                <div id="rl-wall-size-controls" style="display: inline-flex; align-items: center; gap: 6px; margin-left: 14px;">
-                    <span style="font-size: 12px; color: var(--rl-text-muted);">Dài:</span>
-                    <input type="number" id="rl-wall-len-input" min="60" step="10" class="rl-grid-select" style="width: 75px; padding: 2px 6px;">
-                    <span style="font-size: 12px; color: var(--rl-text-muted);">px</span>
-                    <span style="font-size: 12px; color: var(--rl-text-muted); margin-left: 8px;">Cao:</span>
-                    <input type="number" id="rl-wall-h-input" min="60" step="10" class="rl-grid-select" style="width: 75px; padding: 2px 6px;">
-                    <span style="font-size: 12px; color: var(--rl-text-muted);">px</span>
-                </div>
             </div>
             <div class="rl-toolbar-divider" id="rl-nav-divider" style="display: none;"></div>
             <div class="rl-toolbar-group">
@@ -737,8 +729,6 @@
         const backBtn = document.getElementById('rl-back-btn');
         const breadcrumbEl = document.getElementById('rl-breadcrumb');
         const navDividerEl = document.getElementById('rl-nav-divider');
-        const wallLenInput = document.getElementById('rl-wall-len-input');
-        const wallHInput = document.getElementById('rl-wall-h-input');
         // ===== KONVA STAGE =====
         const stageContainer = document.getElementById('rl-stage-container');
         const canvasContainer = document.getElementById('rl-canvas-container');
@@ -2377,6 +2367,9 @@
             const wallBgGroup = new Konva.Group({
                 x: snapValue((stageWidth - wallLength) / 2),
                 y: snapValue((stageHeight - wallHeight) / 2),
+                width: wallLength,
+                height: wallHeight,
+                draggable: true,
                 name: 'wall-bg-group'
             });
             wallBgGroup.setAttr('objectType', 'wall_elevation');
@@ -2384,6 +2377,8 @@
             wallBgGroup.setAttr('wallHeight', wallHeight);
 
             const wallBgRect = new Konva.Rect({
+                x: 0,
+                y: 0,
                 width: wallLength,
                 height: wallHeight,
                 fill: '#202435',
@@ -2395,6 +2390,8 @@
 
             const hatchSpacing = 20;
             const pg = new Konva.Group({
+                x: 0,
+                y: 0,
                 clipX: 0,
                 clipY: 0,
                 clipWidth: wallLength,
@@ -2403,13 +2400,18 @@
                 name: 'wall-pg'
             });
 
+            // Vẽ các đường gạch chéo chuẩn xác nằm gọn 100% trong [0, w] x [0, h]
             function rebuildHatchLines(w, h) {
                 pg.destroyChildren();
                 pg.clipWidth(w);
                 pg.clipHeight(h);
-                for (let xOffset = -h; xOffset < w; xOffset += hatchSpacing) {
+                for (let C = hatchSpacing; C < w + h; C += hatchSpacing) {
+                    const x1 = Math.max(0, C - h);
+                    const y1 = C - x1;
+                    const y2 = Math.max(0, C - w);
+                    const x2 = C - y2;
                     pg.add(new Konva.Line({
-                        points: [xOffset, h, xOffset + h, 0],
+                        points: [x1, y1, x2, y2],
                         stroke: 'rgba(255, 255, 255, 0.03)',
                         strokeWidth: 2,
                         listening: false
@@ -2433,10 +2435,12 @@
             mainLayer.add(wallBgGroup);
 
             // Hàm cập nhật kích thước bức tường linh hoạt
-            function updateWallElevationSize(newW, newH, fromInput = false) {
+            function updateWallElevationSize(newW, newH) {
                 newW = Math.max(60, Math.round(newW));
                 newH = Math.max(60, Math.round(newH));
 
+                wallBgGroup.width(newW);
+                wallBgGroup.height(newH);
                 wallBgGroup.setAttr('wallLength', newW);
                 wallBgGroup.setAttr('wallHeight', newH);
 
@@ -2446,11 +2450,6 @@
                 rebuildHatchLines(newW, newH);
 
                 wallLabel.text(`Mặt đứng bức tường W${activeWallId} (${newW}px x ${newH}px)`);
-
-                if (!fromInput) {
-                    if (wallLenInput) wallLenInput.value = newW;
-                    if (wallHInput) wallHInput.value = newH;
-                }
 
                 // Cập nhật giá trị vào wallGroup gốc
                 wallGroup.setAttr('wallElevationHeight', newH);
@@ -2486,35 +2485,50 @@
 
             // Gán sự kiện click chọn bức tường để hiển thị khung neo kéo (Transformer)
             wallBgGroup.on('click tap', (e) => {
-                if (e.target === wallBgRect || e.target === wallLabel || e.target.getParent() === pg) {
+                if (e.target === wallBgRect || e.target === wallLabel || (e.target.getParent && e.target.getParent() === pg)) {
                     selectNode(wallBgGroup);
                 }
             });
 
+            // Tường di chuyển tự do trong mặt phẳng tọa độ
+            wallBgGroup.on('mouseenter', (e) => {
+                if (e.target === wallBgRect) {
+                    stageContainer.style.cursor = 'grab';
+                }
+            });
+            wallBgGroup.on('dragstart', () => {
+                stageContainer.style.cursor = 'grabbing';
+            });
+            wallBgGroup.on('dragend', () => {
+                stageContainer.style.cursor = 'grab';
+                let curX = wallBgGroup.x();
+                let curY = wallBgGroup.y();
+                if (snapToGrid) {
+                    curX = snapValue(curX);
+                    curY = snapValue(curY);
+                }
+                wallBgGroup.position({ x: curX, y: curY });
+                mainLayer.batchDraw();
+            });
+
             // Gắn sự kiện kéo co giãn bằng Transformer
             wallBgGroup.on('transform', () => {
-                const scaleX = wallBgGroup.scaleX();
-                const scaleY = wallBgGroup.scaleY();
-                let currentW = wallBgGroup.getAttr('wallLength');
-                let currentH = wallBgGroup.getAttr('wallHeight');
+                const scaleX = Math.abs(wallBgGroup.scaleX());
+                const scaleY = Math.abs(wallBgGroup.scaleY());
+                let currentW = wallBgGroup.getAttr('wallLength') || wallLength;
+                let currentH = wallBgGroup.getAttr('wallHeight') || wallHeight;
 
-                let newW = Math.max(60, Math.round(currentW * scaleX));
-                let newH = Math.max(60, Math.round(currentH * scaleY));
+                let curW = Math.max(60, Math.round(currentW * scaleX));
+                let curH = Math.max(60, Math.round(currentH * scaleY));
 
-                if (snapToGrid) {
-                    newW = snapValue(newW);
-                    newH = snapValue(newH);
-                }
-
-                wallBgGroup.scale({ x: 1, y: 1 });
-                updateWallElevationSize(newW, newH);
+                wallLabel.text(`Mặt đứng bức tường W${activeWallId} (${curW}px x ${curH}px)`);
             });
 
             wallBgGroup.on('transformend', () => {
-                const scaleX = wallBgGroup.scaleX();
-                const scaleY = wallBgGroup.scaleY();
-                let currentW = wallBgGroup.getAttr('wallLength');
-                let currentH = wallBgGroup.getAttr('wallHeight');
+                const scaleX = Math.abs(wallBgGroup.scaleX());
+                const scaleY = Math.abs(wallBgGroup.scaleY());
+                let currentW = wallBgGroup.getAttr('wallLength') || wallLength;
+                let currentH = wallBgGroup.getAttr('wallHeight') || wallHeight;
 
                 let newW = Math.max(60, Math.round(currentW * scaleX));
                 let newH = Math.max(60, Math.round(currentH * scaleY));
@@ -2524,37 +2538,12 @@
                     newH = snapValue(newH);
                 }
 
-                wallBgGroup.scale({ x: 1, y: 1 });
+                wallBgGroup.scaleX(1);
+                wallBgGroup.scaleY(1);
                 updateWallElevationSize(newW, newH);
                 transformer.nodes([wallBgGroup]);
                 mainLayer.batchDraw();
             });
-
-            // Gắn sự kiện cho ô nhập kích thước trên thanh Toolbar
-            if (wallLenInput) {
-                wallLenInput.value = Math.round(wallLength);
-                wallLenInput.onchange = () => {
-                    let val = parseInt(wallLenInput.value, 10);
-                    if (val && val >= 60) {
-                        if (snapToGrid) val = snapValue(val);
-                        wallLenInput.value = val;
-                        updateWallElevationSize(val, wallBgGroup.getAttr('wallHeight'), true);
-                        transformer.nodes([wallBgGroup]);
-                    }
-                };
-            }
-            if (wallHInput) {
-                wallHInput.value = Math.round(wallHeight);
-                wallHInput.onchange = () => {
-                    let val = parseInt(wallHInput.value, 10);
-                    if (val && val >= 60) {
-                        if (snapToGrid) val = snapValue(val);
-                        wallHInput.value = val;
-                        updateWallElevationSize(wallBgGroup.getAttr('wallLength'), val, true);
-                        transformer.nodes([wallBgGroup]);
-                    }
-                };
-            }
 
             // Tự động chọn bức tường khi vừa mở giao diện để người dùng thấy ngay các điểm neo kéo
             selectNode(wallBgGroup);
@@ -2727,6 +2716,8 @@
                 mainLayer.batchDraw();
             });
 
+            group.on('dragstart', (e) => { e.cancelBubble = true; });
+            group.on('dragmove', (e) => { e.cancelBubble = true; });
             group.on('click tap', (e) => { e.cancelBubble = true; selectNode(group); });
 
             group.on('contextmenu', (e) => {
