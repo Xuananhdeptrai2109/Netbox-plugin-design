@@ -2075,7 +2075,7 @@
             const wt = wallInfo.wallType || 'h'; // 'h' = horizontal, 'v' = vertical
             const isVertical = (wt === 'v');
             const wallLength = 160;
-            const wallThickness = 15;
+            const wallThickness = 20;
 
             // Use custom dimensions if provided, otherwise defaults
             let width = wallInfo.customWidth || (isVertical ? wallThickness : wallLength);
@@ -2295,7 +2295,7 @@
                 const wx = other.x();
                 const wy = other.y();
                 const ww = other.getAttr('wallWidth') || 160;
-                const wh = other.getAttr('wallHeight') || 15;
+                const wh = other.getAttr('wallHeight') || 20;
                 const wt = other.getAttr('wallType') || (wh > ww ? 'v' : 'h');
 
                 if (wt === 'h') {
@@ -2338,11 +2338,13 @@
                 group.rotation(snapPos.rot);
                 group.setAttr('baseX', snapPos.x);
                 group.setAttr('baseY', snapPos.y);
-                group.setAttr('parentId', snappedWall.getAttr('objectId'));
-                group.setAttr('parentType', 'wall');
+                group.setAttr('attachedWallId', snappedWall.getAttr('objectId'));
+                group.setAttr('parentId', null);
+                group.setAttr('parentType', null);
             } else {
                 group.setAttr('baseX', group.x());
                 group.setAttr('baseY', group.y());
+                group.setAttr('attachedWallId', null);
                 group.setAttr('parentId', null);
                 group.setAttr('parentType', null);
             }
@@ -2373,9 +2375,10 @@
             group.setAttr('customHeight', height);
             group.setAttr('baseX', x);
             group.setAttr('baseY', y);
+            group.setAttr('parentId', null);
+            group.setAttr('parentType', null);
             if (parentId) {
-                group.setAttr('parentId', parentId);
-                group.setAttr('parentType', 'wall');
+                group.setAttr('attachedWallId', parentId);
             }
 
             // Return exact bounding box matching object dimensions
@@ -2577,9 +2580,10 @@
             group.setAttr('customHeight', height);
             group.setAttr('baseX', x);
             group.setAttr('baseY', y);
+            group.setAttr('parentId', null);
+            group.setAttr('parentType', null);
             if (parentId) {
-                group.setAttr('parentId', parentId);
-                group.setAttr('parentType', 'wall');
+                group.setAttr('attachedWallId', parentId);
             }
 
             // Return exact bounding box matching object dimensions
@@ -2797,7 +2801,7 @@
                     const wallId = group.getAttr('objectId');
                     group._attachedChildren = [];
                     mainLayer.find('.layout-object').forEach(child => {
-                        if (child !== group && child.getAttr('parentType') === 'wall' && child.getAttr('parentId') == wallId) {
+                        if (child !== group && (child.getAttr('attachedWallId') == wallId || (child.getAttr('parentType') === 'wall' && child.getAttr('parentId') == wallId))) {
                             group._attachedChildren.push({
                                 node: child,
                                 offsetX: child.x() - group.x(),
@@ -3301,7 +3305,12 @@
                 if (objType === 'wall') {
                     entry.width = Math.round((group.getAttr('wallWidth') || 0) * 100) / 100;
                     entry.height = Math.round((group.getAttr('wallHeight') || 0) * 100) / 100;
-                } else if (['door_1', 'door_2', 'door_wall', 'window_floor', 'window_wall', 'window_2', 'window_4'].includes(objType)) {
+                } else if (['door_1', 'door_2', 'window_floor', 'window_2', 'window_4'].includes(objType)) {
+                    entry.width = Math.round((group.getAttr('doorWidth') || group.getAttr('windowWidth') || group.getAttr('customWidth') || 0) * 100) / 100;
+                    entry.height = Math.round((group.getAttr('doorHeight') || group.getAttr('windowHeight') || group.getAttr('customHeight') || 0) * 100) / 100;
+                    entry.parent_type = null;
+                    entry.parent_id = null;
+                } else if (['door_wall', 'window_wall'].includes(objType)) {
                     entry.width = Math.round((group.getAttr('doorWidth') || group.getAttr('windowWidth') || group.getAttr('customWidth') || 0) * 100) / 100;
                     entry.height = Math.round((group.getAttr('doorHeight') || group.getAttr('windowHeight') || group.getAttr('customHeight') || 0) * 100) / 100;
                     if (group.getAttr('parentType')) {
@@ -3330,12 +3339,18 @@
                 });
             }
 
+            const uniqueObjects = new Map();
+            objects.forEach(object => {
+                uniqueObjects.set(`${object.object_type}_${object.object_id}`, object);
+            });
+            const objectsToSave = Array.from(uniqueObjects.values());
+
             // Sắp xếp các đối tượng theo thứ tự: Tường trước, thiết bị ở giữa, cửa/cửa sổ sau cùng để lưu vào database đúng thứ tự lớp
             const saveOrderMap = {
                 'wall': 10, 'location': 20, 'rack': 30, 'asset': 40,
                 'door_1': 50, 'door_2': 50, 'door_wall': 50, 'window_floor': 50, 'window_wall': 50, 'window_2': 50, 'window_4': 50
             };
-            objects.sort((a, b) => (saveOrderMap[a.object_type] || 35) - (saveOrderMap[b.object_type] || 35));
+            objectsToSave.sort((a, b) => (saveOrderMap[a.object_type] || 35) - (saveOrderMap[b.object_type] || 35));
 
             showLoading();
             try {
@@ -3347,13 +3362,13 @@
                     },
                     body: JSON.stringify({
                         location_id: currentLocationId,
-                        objects: objects,
+                        objects: objectsToSave,
                     }),
                 });
                 const result = await resp.json();
                 hideLoading();
-                if (resp.ok) {
-                    showToast(`Đã lưu thành công! (${objects.length} đối tượng)`, 'success');
+                if (resp.ok && result.status === 'ok') {
+                    showToast(`Đã lưu thành công! (${objectsToSave.length} đối tượng)`, 'success');
                     // Đảm bảo sau khi lưu, tất cả cửa và cửa sổ luôn nằm trên đỉnh lớp hiển thị
                     mainLayer.find('.layout-object').forEach(group => {
                         const objType = group.getAttr('objectType');
@@ -3364,7 +3379,7 @@
                     if (selectedNode) transformer.moveToTop();
                     mainLayer.batchDraw();
                 } else {
-                    showToast(result.error || 'Lỗi khi lưu', 'error');
+                    showToast(result.error || result.message || 'Lỗi khi lưu', 'error');
                 }
             } catch (err) {
                 hideLoading();
@@ -3818,33 +3833,36 @@
                     const oldIndicators = group.findOne('.wall-indicators-group');
                     if (oldIndicators) oldIndicators.destroy();
 
-                    if (wallAssetsMap.has(wallId) && wallAssetsMap.get(wallId).length > 0) {
-                        const assets = wallAssetsMap.get(wallId);
-                        const indicatorsGroup = new Konva.Group({
-                            name: 'wall-indicators-group',
-                            listening: false
-                        });
-
-                        const w = group.getAttr('wallWidth');
-                        const h = group.getAttr('wallHeight');
-                        const isV = (h > w);
-
-                        const step = (isV ? h : w) / (assets.length + 1);
-                        
-                        assets.forEach((a, idx) => {
-                            const offset = step * (idx + 1);
-                            const dot = new Konva.Circle({
-                                x: isV ? w / 2 : offset,
-                                y: isV ? offset : h / 2,
-                                radius: Math.min(w, h) / 3.5,
-                                fill: '#3498db',
-                                stroke: '#fff',
-                                strokeWidth: 0.5
+                    if (wallAssetsMap.has(wallId)) {
+                        // Chỉ hiển thị dấu chấm báo hiệu cho Thiết bị (Asset), không vẽ cho cửa hoặc cửa sổ
+                        const assets = (wallAssetsMap.get(wallId) || []).filter(item => item.object_type === 'asset');
+                        if (assets.length > 0) {
+                            const indicatorsGroup = new Konva.Group({
+                                name: 'wall-indicators-group',
+                                listening: false
                             });
-                            indicatorsGroup.add(dot);
-                        });
 
-                        group.add(indicatorsGroup);
+                            const w = group.getAttr('wallWidth');
+                            const h = group.getAttr('wallHeight');
+                            const isV = (h > w);
+
+                            const step = (isV ? h : w) / (assets.length + 1);
+                            
+                            assets.forEach((a, idx) => {
+                                const offset = step * (idx + 1);
+                                const dot = new Konva.Circle({
+                                    x: isV ? w / 2 : offset,
+                                    y: isV ? offset : h / 2,
+                                    radius: Math.min(w, h) / 3.5,
+                                    fill: '#3498db',
+                                    stroke: '#fff',
+                                    strokeWidth: 0.5
+                                });
+                                indicatorsGroup.add(dot);
+                            });
+
+                            group.add(indicatorsGroup);
+                        }
                     }
                 }
             });

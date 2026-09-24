@@ -1,0 +1,1103 @@
+{% extends 'generic/object.html' %}
+{% load static %}
+
+{% block title %}Temperature Monitoring - {{ object }}{% endblock %}
+
+{% block content %}
+<!-- Chart.js CDN for Realtime Time-Series Graph -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+
+<style>
+    :root {
+        --tm-bg: #0d1117;
+        --tm-surface: #161b22;
+        --tm-surface-2: #21262d;
+        --tm-border: #30363d;
+        --tm-text: #e6edf3;
+        --tm-text-muted: #8b949e;
+        --tm-accent: #6366f1;
+        --tm-accent-hover: #4f46e5;
+        --tm-accent-glow: rgba(99, 102, 241, 0.25);
+        --tm-cool: #38bdf8;
+        --tm-normal: #10b981;
+        --tm-warning: #f59e0b;
+        --tm-danger: #ef4444;
+        --tm-radius: 12px;
+    }
+
+    .tm-container {
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+        background: var(--tm-bg);
+        color: var(--tm-text);
+        padding: 24px;
+        border-radius: var(--tm-radius);
+        border: 1px solid var(--tm-border);
+        font-family: 'Inter', system-ui, -apple-system, sans-serif;
+        box-shadow: 0 16px 36px rgba(0, 0, 0, 0.35);
+        min-height: 800px;
+    }
+
+    /* ===== HEADER ===== */
+    .tm-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 16px;
+        border-bottom: 1px solid var(--tm-border);
+        padding-bottom: 20px;
+    }
+
+    .tm-header-title {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+    }
+
+    .tm-header-title h2 {
+        margin: 0;
+        font-size: 20px;
+        font-weight: 700;
+        letter-spacing: -0.02em;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .tm-badge-tsdb {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        background: rgba(99, 102, 241, 0.15);
+        color: #818cf8;
+        border: 1px solid rgba(99, 102, 241, 0.3);
+        padding: 4px 10px;
+        border-radius: 20px;
+        font-size: 11px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+    }
+
+    .tm-pulse-dot {
+        width: 8px;
+        height: 8px;
+        background: #10b981;
+        border-radius: 50%;
+        box-shadow: 0 0 0 rgba(16, 185, 129, 0.4);
+        animation: tmPulse 2s infinite;
+    }
+
+    @keyframes tmPulse {
+        0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
+        70% { box-shadow: 0 0 0 10px rgba(16, 185, 129, 0); }
+        100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+    }
+
+    /* ===== KPI CARDS ===== */
+    .tm-kpi-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        gap: 14px;
+    }
+
+    .tm-kpi-card {
+        background: var(--tm-surface);
+        border: 1px solid var(--tm-border);
+        border-radius: var(--tm-radius);
+        padding: 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        transition: transform 0.2s, border-color 0.2s;
+    }
+
+    .tm-kpi-card:hover {
+        transform: translateY(-2px);
+        border-color: #484f58;
+    }
+
+    .tm-kpi-title {
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--tm-text-muted);
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+    }
+
+    .tm-kpi-value {
+        font-size: 24px;
+        font-weight: 700;
+        display: flex;
+        align-items: baseline;
+        gap: 4px;
+    }
+
+    .tm-kpi-unit {
+        font-size: 14px;
+        color: var(--tm-text-muted);
+        font-weight: 500;
+    }
+
+    .tm-kpi-subtitle {
+        font-size: 11px;
+        color: var(--tm-text-muted);
+    }
+
+    /* ===== BUTTONS ===== */
+    .tm-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 8px 16px;
+        border-radius: 8px;
+        font-size: 13px;
+        font-weight: 600;
+        cursor: pointer;
+        border: 1px solid transparent;
+        transition: all 0.2s;
+    }
+
+    .tm-btn-primary {
+        background: var(--tm-accent);
+        color: #fff;
+    }
+
+    .tm-btn-primary:hover {
+        background: var(--tm-accent-hover);
+        box-shadow: 0 0 12px var(--tm-accent-glow);
+    }
+
+    .tm-btn-auto {
+        background: var(--tm-surface-2);
+        border: 1px solid var(--tm-border);
+        color: var(--tm-text);
+        padding: 9px 18px;
+        font-size: 13px;
+    }
+
+    .tm-btn-auto.active {
+        background: rgba(16, 185, 129, 0.15);
+        border-color: #10b981;
+        color: #34d399;
+        box-shadow: 0 0 12px rgba(16, 185, 129, 0.3);
+    }
+
+    .tm-auto-countdown {
+        font-family: monospace;
+        font-weight: 700;
+        color: #34d399;
+        font-size: 13px;
+        padding-left: 4px;
+    }
+
+    /* ===== MAIN CONTENT TABS / PANELS ===== */
+    .tm-main-grid {
+        display: grid;
+        grid-template-columns: 1.15fr 0.85fr;
+        gap: 20px;
+    }
+
+    @media (max-width: 1200px) {
+        .tm-main-grid {
+            grid-template-columns: 1fr;
+        }
+    }
+
+    .tm-panel {
+        background: var(--tm-surface);
+        border: 1px solid var(--tm-border);
+        border-radius: var(--tm-radius);
+        padding: 18px;
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+    }
+
+    .tm-panel-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        border-bottom: 1px solid var(--tm-border);
+        padding-bottom: 12px;
+    }
+
+    .tm-panel-title {
+        font-size: 15px;
+        font-weight: 700;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin: 0;
+    }
+
+    /* ===== LIVE TEMPERATURE CARDS LIST ===== */
+    .tm-device-list {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        max-height: 560px;
+        overflow-y: auto;
+        padding-right: 4px;
+    }
+
+    .tm-device-card {
+        background: var(--tm-surface-2);
+        border: 1px solid var(--tm-border);
+        border-radius: 8px;
+        padding: 12px 16px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        transition: border-color 0.2s, background 0.2s;
+    }
+
+    .tm-device-card:hover {
+        border-color: #484f58;
+    }
+
+    .tm-device-info {
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
+        min-width: 140px;
+    }
+
+    .tm-device-name {
+        font-size: 14px;
+        font-weight: 600;
+        color: var(--tm-text);
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+
+    .tm-device-type-badge {
+        font-size: 10px;
+        text-transform: uppercase;
+        padding: 2px 6px;
+        border-radius: 4px;
+        font-weight: 700;
+        background: #30363d;
+        color: #8b949e;
+    }
+
+    .tm-device-type-badge.rack {
+        background: rgba(99, 102, 241, 0.2);
+        color: #a5b4fc;
+    }
+
+    .tm-device-type-badge.asset {
+        background: rgba(236, 72, 153, 0.2);
+        color: #f472b6;
+    }
+
+    .tm-device-sub {
+        font-size: 11px;
+        color: var(--tm-text-muted);
+    }
+
+    .tm-device-range-tag {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        background: rgba(99, 102, 241, 0.1);
+        color: #a5b4fc;
+        border: 1px solid rgba(99, 102, 241, 0.25);
+        border-radius: 4px;
+        padding: 2px 6px;
+        font-size: 11px;
+        font-weight: 600;
+        margin-top: 2px;
+    }
+
+    .tm-device-temp-zone {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        flex: 1;
+        justify-content: flex-end;
+    }
+
+    .tm-temp-bar-wrap {
+        width: 110px;
+        height: 6px;
+        background: #30363d;
+        border-radius: 3px;
+        overflow: hidden;
+        position: relative;
+    }
+
+    .tm-temp-bar-fill {
+        height: 100%;
+        transition: width 0.4s ease, background-color 0.4s ease;
+    }
+
+    .tm-temp-pill {
+        font-size: 15px;
+        font-weight: 700;
+        min-width: 65px;
+        text-align: right;
+    }
+
+    .status-cool { color: var(--tm-cool); }
+    .status-normal { color: var(--tm-normal); }
+    .status-warning { color: var(--tm-warning); }
+    .status-critical { color: var(--tm-danger); }
+
+    .tm-device-action-btn {
+        background: #21262d;
+        border: 1px solid var(--tm-border);
+        color: var(--tm-text-muted);
+        border-radius: 6px;
+        padding: 5px 12px;
+        font-size: 12px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s;
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+    }
+
+    .tm-device-action-btn:hover {
+        color: #fff;
+        border-color: #8b949e;
+        background: #30363d;
+    }
+
+    /* ===== TIME-SERIES CHART ===== */
+    .tm-chart-container {
+        position: relative;
+        height: 250px;
+        width: 100%;
+    }
+
+    /* ===== LIVE 10S LOG STREAM TABLE ===== */
+    .tm-log-table-wrap {
+        max-height: 270px;
+        overflow-y: auto;
+        border: 1px solid var(--tm-border);
+        border-radius: 8px;
+        background: #0d1117;
+    }
+
+    .tm-log-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 12px;
+        text-align: left;
+    }
+
+    .tm-log-table th {
+        background: #161b22;
+        color: var(--tm-text-muted);
+        padding: 8px 12px;
+        font-weight: 600;
+        position: sticky;
+        top: 0;
+        z-index: 2;
+        border-bottom: 1px solid var(--tm-border);
+    }
+
+    .tm-log-table td {
+        padding: 7px 12px;
+        border-bottom: 1px solid rgba(48, 54, 61, 0.5);
+        color: var(--tm-text);
+    }
+
+    .tm-log-table tr:hover td {
+        background: rgba(255, 255, 255, 0.02);
+    }
+
+    .tm-status-tag {
+        display: inline-block;
+        padding: 2px 6px;
+        border-radius: 12px;
+        font-size: 10px;
+        font-weight: 700;
+        text-transform: uppercase;
+    }
+
+    .tag-cool { background: rgba(56, 189, 248, 0.15); color: #38bdf8; }
+    .tag-normal { background: rgba(16, 185, 129, 0.15); color: #10b981; }
+    .tag-warning { background: rgba(245, 158, 11, 0.15); color: #f59e0b; }
+    .tag-critical { background: rgba(239, 68, 68, 0.15); color: #ef4444; }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar {
+        width: 6px;
+        height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+        background: transparent;
+    }
+    ::-webkit-scrollbar-thumb {
+        background: #30363d;
+        border-radius: 3px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+        background: #484f58;
+    }
+</style>
+
+<div class="tm-container">
+    <!-- Header -->
+    <div class="tm-header">
+        <div class="tm-header-title">
+            <div>
+                <h2>Giám sát Nhiệt độ (Temperature Monitoring)</h2>
+                <span class="tm-kpi-subtitle">Vị trí: <strong>{{ object.name }}</strong> (Site: {{ object.site.name|default:"N/A" }})</span>
+            </div>
+            <span class="tm-badge-tsdb">
+                <span class="tm-pulse-dot"></span>
+                Time-Series Engine (10s Auto)
+            </span>
+        </div>
+
+        <div style="display: flex; align-items: center; gap: 12px;">
+            <button class="tm-btn tm-btn-auto" id="tm-auto-btn" onclick="toggleAutoMonitor()">
+                <span id="tm-auto-icon">▶</span>
+                <span id="tm-auto-text">Tự động ghi log 10s</span>
+                <span class="tm-auto-countdown" id="tm-countdown" style="display: none;">(10s)</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- KPI Summary Row -->
+    <div class="tm-kpi-grid">
+        <div class="tm-kpi-card">
+            <span class="tm-kpi-title">Nhiệt độ TB Phòng</span>
+            <div class="tm-kpi-value" id="kpi-avg">-- <span class="tm-kpi-unit">°C</span></div>
+            <span class="tm-kpi-subtitle" id="kpi-avg-status">Tính từ tất cả thiết bị</span>
+        </div>
+        <div class="tm-kpi-card">
+            <span class="tm-kpi-title">Điểm Nóng Nhất (Hotspot)</span>
+            <div class="tm-kpi-value status-warning" id="kpi-max">-- <span class="tm-kpi-unit">°C</span></div>
+            <span class="tm-kpi-subtitle">Cần lưu ý tản nhiệt</span>
+        </div>
+        <div class="tm-kpi-card">
+            <span class="tm-kpi-title">Điểm Mát Nhất</span>
+            <div class="tm-kpi-value status-cool" id="kpi-min">-- <span class="tm-kpi-unit">°C</span></div>
+            <span class="tm-kpi-subtitle">Vùng nhiệt thấp</span>
+        </div>
+        <div class="tm-kpi-card">
+            <span class="tm-kpi-title">Thiết Bị Giám Sát</span>
+            <div class="tm-kpi-value" id="kpi-count">--</div>
+            <span class="tm-kpi-subtitle">Tủ Rack + Assets</span>
+        </div>
+        <div class="tm-kpi-card">
+            <span class="tm-kpi-title">Phân Loại Trạng Thái</span>
+            <div style="display: flex; gap: 8px; margin-top: 4px;">
+                <span class="tm-status-tag tag-normal" id="kpi-count-normal">0 Bình thường</span>
+                <span class="tm-status-tag tag-warning" id="kpi-count-warning">0 Cảnh báo</span>
+                <span class="tm-status-tag tag-critical" id="kpi-count-critical">0 Quá nhiệt</span>
+            </div>
+            <span class="tm-kpi-subtitle" style="margin-top: 4px;">Tự động biến thiên ngẫu nhiên mỗi 10s trong [a, b]</span>
+        </div>
+    </div>
+
+    <!-- Main Content: Left = Live Device Grid, Right = Chart & 10s Logs -->
+    <div class="tm-main-grid">
+        <!-- Panel Left: Devices List with individual [a, b] range configuration -->
+        <div class="tm-panel">
+            <div class="tm-panel-header">
+                <h3 class="tm-panel-title">
+                    Danh Sách Tủ Racks & Assets
+                </h3>
+                <div style="display: flex; gap: 6px;">
+                    <button class="tm-device-action-btn" onclick="filterDevices('all')">Tất cả</button>
+                    <button class="tm-device-action-btn" onclick="filterDevices('rack')">Tủ Rack</button>
+                    <button class="tm-device-action-btn" onclick="filterDevices('asset')">Assets</button>
+                </div>
+            </div>
+
+            <div class="tm-device-list" id="tm-device-container">
+                <div style="text-align: center; color: var(--tm-text-muted); padding: 40px;">
+                    Đang tải dữ liệu thiết bị...
+                </div>
+            </div>
+        </div>
+
+        <!-- Panel Right: Time-Series Chart & Live Logs -->
+        <div class="tm-panel">
+            <div class="tm-panel-header">
+                <h3 class="tm-panel-title">
+                    Biểu Đồ Chuỗi Thời Gian (Time-Series Chart)
+                </h3>
+                <span style="font-size: 11px; color: var(--tm-text-muted);">Cập nhật mỗi 10 giây</span>
+            </div>
+
+            <div class="tm-chart-container">
+                <canvas id="tm-chart"></canvas>
+            </div>
+
+            <!-- 10s Live Log Stream -->
+            <div class="tm-panel-header" style="margin-top: 10px;">
+                <h3 class="tm-panel-title">
+                    <span class="tm-pulse-dot" style="margin-right: 2px;"></span>
+                    Live 10s Time-Series Log Stream
+                </h3>
+                <div style="display: flex; gap: 8px;">
+                    <button class="tm-device-action-btn" id="btn-pause-log" onclick="toggleLogPause()">Tạm dừng cuộn</button>
+                    <button class="tm-device-action-btn" onclick="clearLogDisplay()">Xóa bảng</button>
+                </div>
+            </div>
+
+            <div class="tm-log-table-wrap">
+                <table class="tm-log-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 80px;">Thời gian</th>
+                            <th style="width: 70px;">Loại</th>
+                            <th>Tên Thiết Bị</th>
+                            <th style="width: 90px;">Nhiệt độ</th>
+                            <th style="width: 100px;">Trạng thái</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tm-log-tbody">
+                        <tr>
+                            <td colspan="5" style="text-align: center; color: var(--tm-text-muted); padding: 20px;">
+                                Đang nạp log chuỗi thời gian...
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Config Individual Temperature Range [a, b] -->
+<div id="tm-edit-modal" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.65); backdrop-filter: blur(5px); z-index: 9999; justify-content: center; align-items: center;">
+    <div style="background: var(--tm-surface); border: 1px solid var(--tm-border); border-radius: 12px; padding: 24px; width: 380px; display: flex; flex-direction: column; gap: 16px; box-shadow: 0 20px 40px rgba(0,0,0,0.5);">
+        <div style="border-bottom: 1px solid var(--tm-border); padding-bottom: 12px;">
+            <h4 style="margin: 0; font-size: 16px; color: var(--tm-text);" id="modal-device-title">Cấu hình Dải Nhiệt Độ</h4>
+            <span style="font-size: 12px; color: var(--tm-text-muted);">Nhiệt độ sẽ tự động random trong khoảng [a, b] mỗi 10 giây</span>
+        </div>
+
+        <div style="display: flex; gap: 14px;">
+            <div style="flex: 1;">
+                <label style="font-size: 12px; font-weight: 600; color: var(--tm-text-muted);">Nhiệt độ Min (a):</label>
+                <div style="display: flex; align-items: center; background: var(--tm-surface-2); border: 1px solid var(--tm-border); border-radius: 6px; padding: 4px 10px; margin-top: 6px;">
+                    <input type="number" id="modal-temp-min" step="0.5" style="width: 100%; background: transparent; border: none; color: #fff; font-size: 16px; font-weight: 700; outline: none;">
+                    <span style="font-size: 12px; color: var(--tm-text-muted);">°C</span>
+                </div>
+            </div>
+
+            <div style="flex: 1;">
+                <label style="font-size: 12px; font-weight: 600; color: var(--tm-text-muted);">Nhiệt độ Max (b):</label>
+                <div style="display: flex; align-items: center; background: var(--tm-surface-2); border: 1px solid var(--tm-border); border-radius: 6px; padding: 4px 10px; margin-top: 6px;">
+                    <input type="number" id="modal-temp-max" step="0.5" style="width: 100%; background: transparent; border: none; color: #fff; font-size: 16px; font-weight: 700; outline: none;">
+                    <span style="font-size: 12px; color: var(--tm-text-muted);">°C</span>
+                </div>
+            </div>
+        </div>
+
+        <div id="modal-error-msg" style="display: none; font-size: 12px; color: var(--tm-danger); font-weight: 600;"></div>
+
+        <div style="display: flex; justify-content: flex-end; gap: 10px; border-top: 1px solid var(--tm-border); padding-top: 14px;">
+            <button class="tm-btn" style="background: #30363d; color: #fff;" onclick="closeEditModal()">Hủy</button>
+            <button class="tm-btn tm-btn-primary" onclick="submitEditModal()">Lưu & Cập Nhật</button>
+        </div>
+    </div>
+</div>
+
+
+<script>
+    const LOCATION_ID = {{ object.pk }};
+    const CSRF_TOKEN = '{{ csrf_token }}';
+
+    let devices = [];
+    let autoIntervalId = null;
+    let countdownTimerId = null;
+    let countdownSec = 10;
+    let isLogPaused = false;
+    let timeSeriesChart = null;
+    let maxChartPoints = 15;
+    let currentFilter = 'all';
+    let editingDevice = null;
+
+    // --- Helper get color for temp ---
+    function getTempStatus(temp) {
+        if (temp < 20.0) return 'cool';
+        if (temp <= 27.0) return 'normal';
+        if (temp <= 32.0) return 'warning';
+        return 'critical';
+    }
+
+    function getTempColor(status) {
+        switch(status) {
+            case 'cool': return '#38bdf8';
+            case 'normal': return '#10b981';
+            case 'warning': return '#f59e0b';
+            case 'critical': return '#ef4444';
+            default: return '#10b981';
+        }
+    }
+
+    // --- Fetch initial detail & render ---
+    async function loadTemperatureData() {
+        try {
+            const res = await fetch(`/api/plugins/rack-layout/temperature/${LOCATION_ID}/`);
+            if (!res.ok) throw new Error('Failed to fetch data');
+            const data = await res.json();
+
+            // Merge devices
+            devices = [
+                ...(data.racks || []).map(r => ({ ...r, object_type: 'rack' })),
+                ...(data.assets || []).map(a => ({ ...a, object_type: 'asset' }))
+            ];
+
+            updateKPIs(data.summary);
+            renderDeviceList();
+            initOrUpdateChart();
+            loadRecentLogs();
+
+            // Auto-start 10s loop by default
+            if (!autoIntervalId) {
+                toggleAutoMonitor();
+            }
+        } catch (err) {
+            console.error(err);
+        }
+    }
+
+    function updateKPIs(summary) {
+        if (!summary) return;
+        document.getElementById('kpi-avg').innerHTML = `${summary.avg_temp} <span class="tm-kpi-unit">°C</span>`;
+        document.getElementById('kpi-max').innerHTML = `${summary.max_temp} <span class="tm-kpi-unit">°C</span>`;
+        document.getElementById('kpi-min').innerHTML = `${summary.min_temp} <span class="tm-kpi-unit">°C</span>`;
+        document.getElementById('kpi-count').innerText = summary.total_items;
+
+        const counts = summary.status_counts || {};
+        document.getElementById('kpi-count-normal').innerText = `${counts.normal || 0} Bình thường`;
+        document.getElementById('kpi-count-warning').innerText = `${counts.warning || 0} Cảnh báo`;
+        document.getElementById('kpi-count-critical').innerText = `${counts.critical || 0} Quá nhiệt`;
+    }
+
+    // --- Render Device Cards ---
+    function renderDeviceList() {
+        const container = document.getElementById('tm-device-container');
+        const filtered = devices.filter(d => currentFilter === 'all' || d.object_type === currentFilter);
+
+        if (filtered.length === 0) {
+            container.innerHTML = `<div style="text-align: center; color: var(--tm-text-muted); padding: 40px;">Không có thiết bị nào phù hợp.</div>`;
+            return;
+        }
+
+        container.innerHTML = filtered.map(d => {
+            const status = d.temp_status || getTempStatus(d.current_temp);
+            const color = getTempColor(status);
+            // Percentage for bar between 15°C and 40°C
+            const pct = Math.max(0, Math.min(100, ((d.current_temp - 15) / (40 - 15)) * 100));
+            const minT = d.min_temp !== undefined ? d.min_temp : 20.0;
+            const maxT = d.max_temp !== undefined ? d.max_temp : 30.0;
+
+            return `
+            <div class="tm-device-card" id="card-${d.object_type}-${d.id}">
+                <div class="tm-device-info">
+                    <div class="tm-device-name">
+                        <span class="tm-device-type-badge ${d.object_type}">${d.object_type}</span>
+                        <span>${d.name}</span>
+                    </div>
+                    <div class="tm-device-sub">
+                        ${d.object_type === 'rack' ? `${d.u_height}U` : (d.asset_code || d.model || 'Asset')} • ${d.last_updated || 'Vừa xong'}
+                    </div>
+                    <div>
+                        <span class="tm-device-range-tag" title="Dải nhiệt độ tự động random">
+                            [${minT}°C - ${maxT}°C]
+                        </span>
+                    </div>
+                </div>
+
+                <div class="tm-device-temp-zone">
+                    <div class="tm-temp-bar-wrap" title="${d.current_temp}°C">
+                        <div class="tm-temp-bar-fill" style="width: ${pct}%; background-color: ${color};"></div>
+                    </div>
+                    <div class="tm-temp-pill status-${status}">
+                        ${d.current_temp.toFixed(1)}°C
+                    </div>
+                    <button class="tm-device-action-btn" onclick="openEditModal('${d.object_type}', ${d.id}, '${d.name.replace(/'/g, "\\'")}', ${minT}, ${maxT})">
+                        Sửa
+                    </button>
+                </div>
+
+            </div>
+            `;
+        }).join('');
+    }
+
+    function filterDevices(type) {
+        currentFilter = type;
+        renderDeviceList();
+    }
+
+    // --- Modal Edit Individual [a, b] ---
+    function openEditModal(objType, objId, name, minTemp, maxTemp) {
+        editingDevice = { objType, objId, name };
+        document.getElementById('modal-device-title').innerText = `Sửa dải nhiệt độ: ${name}`;
+        document.getElementById('modal-temp-min').value = minTemp;
+        document.getElementById('modal-temp-max').value = maxTemp;
+        document.getElementById('modal-error-msg').style.display = 'none';
+        const submitBtn = document.getElementById('btn-submit-modal');
+        if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = 'Lưu & Cập Nhật';
+        }
+        document.getElementById('tm-edit-modal').style.display = 'flex';
+    }
+
+    function closeEditModal() {
+        document.getElementById('tm-edit-modal').style.display = 'none';
+        editingDevice = null;
+    }
+
+    async function submitEditModal() {
+        if (!editingDevice) return;
+        const minTemp = parseFloat(document.getElementById('modal-temp-min').value);
+        const maxTemp = parseFloat(document.getElementById('modal-temp-max').value);
+        const errEl = document.getElementById('modal-error-msg');
+        const submitBtn = document.getElementById('btn-submit-modal');
+
+        if (isNaN(minTemp) || isNaN(maxTemp)) {
+            errEl.innerText = 'Vui lòng nhập đầy đủ nhiệt độ a và b!';
+            errEl.style.display = 'block';
+            return;
+        }
+
+        if (minTemp > maxTemp) {
+            errEl.innerText = 'Nhiệt độ tối thiểu a không được lớn hơn nhiệt độ tối đa b!';
+            errEl.style.display = 'block';
+            return;
+        }
+
+        errEl.style.display = 'none';
+        if (submitBtn) {
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '⏳ Đang lưu...';
+        }
+
+        try {
+            const res = await fetch(`/api/plugins/rack-layout/temperature/${LOCATION_ID}/update/`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': CSRF_TOKEN,
+                },
+                body: JSON.stringify({
+                    object_type: editingDevice.objType,
+                    object_id: editingDevice.objId,
+                    min_temp: minTemp,
+                    max_temp: maxTemp
+                })
+            });
+            const data = await res.json();
+            if (res.ok && data.device) {
+                const dev = devices.find(d => d.object_type === editingDevice.objType && d.id === editingDevice.objId);
+                if (dev) {
+                    dev.min_temp = data.device.min_temp;
+                    dev.max_temp = data.device.max_temp;
+                    dev.current_temp = data.device.current_temp;
+                    dev.temp_status = data.device.status;
+                    dev.last_updated = data.device.timestamp;
+                }
+                prependLogRow({
+                    timestamp: data.device.timestamp,
+                    object_type: data.device.object_type,
+                    object_name: data.device.object_name,
+                    temperature: data.device.current_temp,
+                    status: data.device.status,
+                    min_temp: data.device.min_temp,
+                    max_temp: data.device.max_temp
+                });
+                recomputeKPIs();
+                renderDeviceList();
+                closeEditModal();
+            } else {
+                errEl.innerText = data.error || 'Lỗi khi cập nhật dải nhiệt độ';
+                errEl.style.display = 'block';
+            }
+        } catch (err) {
+            console.error(err);
+            errEl.innerText = 'Lỗi kết nối máy chủ: ' + (err.message || 'Không thể cập nhật');
+            errEl.style.display = 'block';
+        } finally {
+            if (submitBtn) {
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = 'Lưu & Cập Nhật';
+            }
+        }
+    }
+
+    // --- Recompute KPIs locally ---
+    function recomputeKPIs() {
+        if (devices.length === 0) return;
+        const temps = devices.map(d => d.current_temp);
+        const avg = +(temps.reduce((a, b) => a + b, 0) / temps.length).toFixed(1);
+        const max = Math.max(...temps);
+        const min = Math.min(...temps);
+
+        const counts = { cool: 0, normal: 0, warning: 0, critical: 0 };
+        devices.forEach(d => {
+            const s = d.temp_status || getTempStatus(d.current_temp);
+            counts[s] = (counts[s] || 0) + 1;
+        });
+
+        updateKPIs({
+            avg_temp: avg,
+            max_temp: max,
+            min_temp: min,
+            total_items: devices.length,
+            status_counts: counts
+        });
+    }
+
+    // --- 10s Auto-Monitor & Log Stream ---
+    function toggleAutoMonitor() {
+        const btn = document.getElementById('tm-auto-btn');
+        const icon = document.getElementById('tm-auto-icon');
+        const countdownEl = document.getElementById('tm-countdown');
+
+        if (autoIntervalId) {
+            // Stop
+            clearInterval(autoIntervalId);
+            clearInterval(countdownTimerId);
+            autoIntervalId = null;
+            countdownTimerId = null;
+            btn.classList.remove('active');
+            icon.innerText = '▶';
+            countdownEl.style.display = 'none';
+        } else {
+            // Start 10s loop
+            btn.classList.add('active');
+            icon.innerText = '⏸';
+            countdownEl.style.display = 'inline';
+            countdownSec = 10;
+            countdownEl.innerText = `(${countdownSec}s)`;
+
+            // Countdown timer UI every second
+            countdownTimerId = setInterval(() => {
+                countdownSec--;
+                if (countdownSec <= 0) countdownSec = 10;
+                countdownEl.innerText = `(${countdownSec}s)`;
+            }, 1000);
+
+            // Execute immediately then every 10 seconds
+            run10sLogCycle();
+            autoIntervalId = setInterval(run10sLogCycle, 10000);
+        }
+    }
+
+    async function run10sLogCycle() {
+        try {
+            const res = await fetch(`/api/plugins/rack-layout/temperature/${LOCATION_ID}/logs/`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': CSRF_TOKEN,
+                }
+            });
+            const data = await res.json();
+            if (res.ok && data.new_logs) {
+                const timeStr = new Date().toLocaleTimeString();
+                data.new_logs.forEach(log => {
+                    const dev = devices.find(d => d.object_type === log.object_type && d.id === log.object_id);
+                    if (dev) {
+                        dev.current_temp = log.temperature;
+                        dev.temp_status = log.status;
+                        dev.last_updated = log.timestamp;
+                        if (log.min_temp !== undefined) dev.min_temp = log.min_temp;
+                        if (log.max_temp !== undefined) dev.max_temp = log.max_temp;
+                    }
+                    prependLogRow(log);
+                });
+
+                recomputeKPIs();
+                renderDeviceList();
+                pushChartDataPoint(timeStr, data.new_logs);
+            }
+        } catch (err) {
+            console.error("10s cycle error:", err);
+        }
+    }
+
+    // --- Log Table Operations ---
+    function prependLogRow(log) {
+        if (isLogPaused) return;
+        const tbody = document.getElementById('tm-log-tbody');
+
+        // Remove placeholder if exists
+        if (tbody.children.length === 1 && tbody.children[0].children.length === 1) {
+            tbody.innerHTML = '';
+        }
+
+        const minT = log.min_temp !== undefined ? log.min_temp : 20.0;
+        const maxT = log.max_temp !== undefined ? log.max_temp : 30.0;
+
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+            <td style="font-family: monospace; color: var(--tm-text-muted);">${log.timestamp}</td>
+            <td><span class="tm-device-type-badge ${log.object_type}">${log.object_type}</span></td>
+            <td style="font-weight: 600;">${log.object_name}</td>
+            <td style="font-weight: 700; color: ${getTempColor(log.status)};">${log.temperature.toFixed(1)}°C</td>
+            <td><span class="tm-status-tag tag-${log.status}">${log.status}</span></td>
+        `;
+
+        tbody.insertBefore(tr, tbody.firstChild);
+
+        // Keep maximum 100 rows in DOM
+        if (tbody.children.length > 100) {
+            tbody.removeChild(tbody.lastChild);
+        }
+    }
+
+    async function loadRecentLogs() {
+        try {
+            const res = await fetch(`/api/plugins/rack-layout/temperature/${LOCATION_ID}/logs/?limit=25`);
+            const data = await res.json();
+            if (res.ok && data.logs && data.logs.length > 0) {
+                const tbody = document.getElementById('tm-log-tbody');
+                tbody.innerHTML = '';
+                data.logs.forEach(log => {
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = `
+                        <td style="font-family: monospace; color: var(--tm-text-muted);">${log.timestamp}</td>
+                        <td><span class="tm-device-type-badge ${log.object_type}">${log.object_type}</span></td>
+                        <td style="font-weight: 600;">${log.object_name}</td>
+                        <td style="font-weight: 700; color: ${getTempColor(log.status)};">${log.temperature.toFixed(1)}°C</td>
+                        <td><span class="tm-status-tag tag-${log.status}">${log.status}</span></td>
+                    `;
+                    tbody.appendChild(tr);
+                });
+            }
+        } catch (err) {
+            console.error(err);
+        }
+    }
+
+    function toggleLogPause() {
+        isLogPaused = !isLogPaused;
+        const btn = document.getElementById('btn-pause-log');
+        btn.innerText = isLogPaused ? 'Tiếp tục cuộn' : 'Tạm dừng cuộn';
+        btn.style.borderColor = isLogPaused ? '#f59e0b' : '';
+    }
+
+    function clearLogDisplay() {
+        document.getElementById('tm-log-tbody').innerHTML = `
+            <tr>
+                <td colspan="5" style="text-align: center; color: var(--tm-text-muted); padding: 20px;">
+                    Đã xóa bảng log.
+                </td>
+            </tr>
+        `;
+    }
+
+
+    // --- Chart.js Time-Series Implementation ---
+    function initOrUpdateChart() {
+        const ctx = document.getElementById('tm-chart').getContext('2d');
+        if (timeSeriesChart) return;
+
+        // Choose up to 6 representative items to display on chart
+        const initialItems = devices.slice(0, 6);
+        const palette = ['#6366f1', '#ec4899', '#10b981', '#f59e0b', '#38bdf8', '#a855f7'];
+
+        const datasets = initialItems.map((item, idx) => ({
+            label: item.name,
+            key: `${item.object_type}-${item.id}`,
+            data: [item.current_temp],
+            borderColor: palette[idx % palette.length],
+            backgroundColor: palette[idx % palette.length] + '20',
+            borderWidth: 2,
+            tension: 0.35,
+            pointRadius: 3,
+            fill: false
+        }));
+
+        const nowStr = new Date().toLocaleTimeString();
+
+        timeSeriesChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: [nowStr],
+                datasets: datasets
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                animation: { duration: 400 },
+                plugins: {
+                    legend: {
+                        position: 'top',
+                        labels: {
+                            color: '#8b949e',
+                            boxWidth: 12,
+                            font: { size: 11, family: 'Inter' }
+                        }
+                    },
+                    tooltip: {
+                        backgroundColor: '#161b22',
+                        titleColor: '#e6edf3',
+                        bodyColor: '#e6edf3',
+                        borderColor: '#30363d',
+                        borderWidth: 1,
+                        callbacks: {
+                            label: function(context) {
+                                return ` ${context.dataset.label}: ${context.parsed.y}°C`;
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        grid: { color: 'rgba(48, 54, 61, 0.4)' },
+                        ticks: { color: '#8b949e', font: { size: 10 } }
+                    },
+                    y: {
+                        grid: { color: 'rgba(48, 54, 61, 0.4)' },
+                        ticks: {
+                            color: '#8b949e',
+                            callback: function(v) { return v + '°C'; }
+                        },
+                        suggestedMin: 18,
+                        suggestedMax: 34
+                    }
+                }
+            }
+        });
+    }
+
+    function pushChartDataPoint(timeStr, newLogs) {
+        if (!timeSeriesChart) return;
+
+        timeSeriesChart.data.labels.push(timeStr);
+        if (timeSeriesChart.data.labels.length > maxChartPoints) {
+            timeSeriesChart.data.labels.shift();
+        }
+
+        timeSeriesChart.data.datasets.forEach(ds => {
+            const match = newLogs.find(l => `${l.object_type}-${l.object_id}` === ds.key);
+            if (match) {
+                ds.data.push(match.temperature);
+            } else {
+                const lastVal = ds.data[ds.data.length - 1] || 25;
+                ds.data.push(lastVal);
+            }
+            if (ds.data.length > maxChartPoints) {
+                ds.data.shift();
+            }
+        });
+
+        timeSeriesChart.update();
+    }
+
+    // --- On Load ---
+    document.addEventListener('DOMContentLoaded', () => {
+        loadTemperatureData();
+    });
+</script>
+{% endblock %}

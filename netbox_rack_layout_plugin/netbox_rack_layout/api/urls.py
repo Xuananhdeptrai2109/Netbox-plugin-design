@@ -29,5 +29,26 @@ urlpatterns = [
         views.SiteLayoutSaveAPIView.as_view(),
         name='site_layout_save_api'
     ),
+    path(
+        'temperature/<int:location_id>/',
+        views.TemperatureDetailAPIView.as_view(),
+        name='temperature_detail_api'
+    ),
+    path(
+        'temperature/<int:location_id>/config/',
+        views.TemperatureConfigAPIView.as_view(),
+        name='temperature_config_api'
+    ),
+    path(
+        'temperature/<int:location_id>/update/',
+        views.TemperatureUpdateAPIView.as_view(),
+        name='temperature_update_api'
+    ),
+    path(
+        'temperature/<int:location_id>/logs/',
+        views.TemperatureLogAPIView.as_view(),
+        name='temperature_logs_api'
+    ),
 ]
+
 

@@ -1,5 +1,6 @@
 from django.db import models
 from netbox.models import NetBoxModel
+from utilities.querysets import RestrictedQuerySet
 from dcim.models import Device
 
 class ZabbixHostConfig(NetBoxModel):
@@ -101,6 +102,8 @@ class ZabbixInterfaceConfig(models.Model):
     port = models.CharField(max_length=10, default='10050')
     is_default = models.BooleanField(default=False)
     details = models.JSONField(default=dict, blank=True)
+
+    objects = RestrictedQuerySet.as_manager()
 
     class Meta:
         verbose_name = 'Giao diện Zabbix Interface'

@@ -1796,7 +1796,7 @@
         const wt = wallInfo.wallType || 'h';
         const isVertical = (wt === 'v');
         const wallLength = 160;
-        const wallThickness = 15;
+        const wallThickness = 20;
 
         let w = wallInfo.customWidth || (wallInfo.parent_type === 'door' ? 50 : (isVertical ? wallThickness : wallLength));
         let h = wallInfo.customHeight || (wallInfo.parent_type === 'door' ? 50 : (isVertical ? wallLength : wallThickness));

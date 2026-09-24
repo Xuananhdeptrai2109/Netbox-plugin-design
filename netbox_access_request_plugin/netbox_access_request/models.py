@@ -3,6 +3,7 @@ from django.urls import reverse
 from django.conf import settings
 from django.core.validators import RegexValidator
 from netbox.models import NetBoxModel
+from utilities.querysets import RestrictedQuerySet
 
 from .choices import RequestStatusChoices, SubjectStatusChoices, VerifyStatusChoices
 
@@ -21,6 +22,8 @@ class UserRegionAssignment(models.Model):
         related_name='user_assignments',
         verbose_name="Region"
     )
+
+    objects = RestrictedQuerySet.as_manager()
 
     class Meta:
         unique_together = ('user', 'region')
@@ -221,6 +224,8 @@ class RequestHistory(models.Model):
         auto_now_add=True,
         verbose_name="Thời gian"
     )
+
+    objects = RestrictedQuerySet.as_manager()
 
     class Meta:
         ordering = ['-timestamp']

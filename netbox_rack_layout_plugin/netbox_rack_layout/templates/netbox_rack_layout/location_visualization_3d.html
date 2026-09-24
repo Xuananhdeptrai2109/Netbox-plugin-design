@@ -1,0 +1,3787 @@
+{% extends 'generic/object.html' %}
+{% load static %}
+
+{% block title %}Visualization 3D - {{ object }}{% endblock %}
+
+{% block content %}
+<!-- Three.js & OrbitControls -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+
+<style>
+    /* ===== ROOT CSS VARIABLES ===== */
+    :root {
+        --v3d-bg: #0f1117;
+        --v3d-surface: #1a1d27;
+        --v3d-surface-glass: rgba(22, 25, 35, 0.88);
+        --v3d-border: rgba(255, 255, 255, 0.1);
+        --v3d-text: #e4e7f1;
+        --v3d-text-muted: #9499af;
+        --v3d-accent: #6366f1;
+        --v3d-accent-hover: #7c7ffa;
+        --v3d-success: #10b981;
+        --v3d-warning: #f59e0b;
+        --v3d-danger: #ef4444;
+        --v3d-info: #0ea5e9;
+        --v3d-radius: 12px;
+    }
+
+    .v3d-wrapper {
+        position: relative;
+        width: 100%;
+        height: calc(100vh - 220px);
+        min-height: 620px;
+        background: radial-gradient(circle at 50% 30%, #171a26 0%, #0c0d12 100%);
+        border-radius: var(--v3d-radius);
+        border: 1px solid var(--v3d-border);
+        overflow: hidden;
+        font-family: 'Inter', system-ui, -apple-system, sans-serif;
+        box-shadow: 0 16px 36px rgba(0, 0, 0, 0.45);
+    }
+
+    /* 3D Canvas */
+    #v3d-canvas-container {
+        width: 100%;
+        height: 100%;
+        outline: none;
+        cursor: grab;
+    }
+    #v3d-canvas-container:active {
+        cursor: grabbing;
+    }
+
+    /* ===== REFINED COMPACT FLOATING TOOLBAR ===== */
+    .v3d-toolbar {
+        position: absolute;
+        top: 14px;
+        left: 50%;
+        transform: translateX(-50%);
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        height: 38px;
+        box-sizing: border-box;
+        padding: 0 8px;
+        background: var(--v3d-surface-glass);
+        backdrop-filter: blur(20px);
+        -webkit-backdrop-filter: blur(20px);
+        border: 1px solid var(--v3d-border);
+        border-radius: 20px;
+        z-index: 20;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+        white-space: nowrap;
+    }
+
+    /* Segmented Group (3D vs Topdown) */
+    .v3d-seg-group {
+        display: flex;
+        align-items: center;
+        background: rgba(255, 255, 255, 0.05);
+        padding: 2px;
+        border-radius: 16px;
+        border: 1px solid rgba(255, 255, 255, 0.06);
+        height: 26px;
+        box-sizing: border-box;
+    }
+    .v3d-seg-btn {
+        background: transparent;
+        border: none;
+        color: var(--v3d-text-muted);
+        padding: 0 10px;
+        height: 22px;
+        line-height: 22px;
+        font-size: 11.5px;
+        font-weight: 500;
+        border-radius: 14px;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        white-space: nowrap;
+        user-select: none;
+    }
+    .v3d-seg-btn:hover {
+        color: #fff;
+    }
+    .v3d-seg-btn.active {
+        background: var(--v3d-accent);
+        color: #fff;
+        box-shadow: 0 2px 8px rgba(99, 102, 241, 0.4);
+    }
+    .v3d-seg-btn:hover {
+        color: #fff;
+        background: rgba(255, 255, 255, 0.08);
+    }
+    .v3d-seg-btn:active {
+        transform: scale(0.96);
+    }
+
+    .v3d-divider {
+        width: 1px;
+        height: 16px;
+        background: rgba(255, 255, 255, 0.12);
+    }
+
+    /* Circular Info Button & Expandable Stats Popover */
+    .v3d-stats-wrap {
+        position: absolute;
+        top: 14px;
+        left: 14px;
+        z-index: 25;
+    }
+    .v3d-stats-btn {
+        width: 34px;
+        height: 34px;
+        border-radius: 50%;
+        background: var(--v3d-surface-glass);
+        backdrop-filter: blur(16px);
+        -webkit-backdrop-filter: blur(16px);
+        border: 1px solid var(--v3d-border);
+        color: var(--v3d-text);
+        font-size: 13px;
+        font-weight: 700;
+        font-family: 'Segoe UI', system-ui, sans-serif;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+        transition: all 0.2s ease;
+        user-select: none;
+    }
+    .v3d-stats-btn:hover {
+        background: rgba(99, 102, 241, 0.25);
+        border-color: var(--v3d-accent);
+        color: #fff;
+        transform: scale(1.05);
+    }
+    .v3d-stats-btn.active {
+        background: var(--v3d-accent);
+        color: #fff;
+        border-color: var(--v3d-accent);
+        box-shadow: 0 0 12px rgba(99, 102, 241, 0.5);
+    }
+
+    /* Expandable Popover Card */
+    .v3d-stats-card {
+        position: absolute;
+        top: 42px;
+        left: 0;
+        width: 200px;
+        background: var(--v3d-surface-glass);
+        backdrop-filter: blur(20px);
+        -webkit-backdrop-filter: blur(20px);
+        border: 1px solid var(--v3d-border);
+        border-radius: 12px;
+        padding: 12px 14px;
+        box-shadow: 0 10px 28px rgba(0, 0, 0, 0.5);
+        display: none;
+        flex-direction: column;
+        gap: 8px;
+        animation: v3dFadeDown 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    }
+    .v3d-stats-card.open {
+        display: flex;
+    }
+    @keyframes v3dFadeDown {
+        from { opacity: 0; transform: translateY(-6px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+    .v3d-stats-header {
+        font-size: 12px;
+        font-weight: 700;
+        color: var(--v3d-accent);
+        border-bottom: 1px solid rgba(255,255,255,0.08);
+        padding-bottom: 6px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    .v3d-stats-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        font-size: 11.5px;
+        color: var(--v3d-text-muted);
+    }
+    .v3d-stats-row strong {
+        color: #fff;
+        font-weight: 600;
+    }
+
+    /* Floating Tooltip */
+    .v3d-tooltip {
+        position: absolute;
+        pointer-events: none;
+        padding: 5px 10px;
+        background: rgba(15, 17, 23, 0.94);
+        color: #fff;
+        font-size: 11.5px;
+        font-weight: 500;
+        border-radius: 6px;
+        border: 1px solid var(--v3d-border);
+        box-shadow: 0 4px 14px rgba(0,0,0,0.5);
+        transform: translate(-50%, -130%);
+        transition: opacity 0.15s ease;
+        opacity: 0;
+        z-index: 30;
+        white-space: nowrap;
+    }
+
+    /* Side Inspect Drawer */
+    .v3d-drawer {
+        position: absolute;
+        top: 14px;
+        right: 14px;
+        width: 320px;
+        max-height: calc(100% - 28px);
+        background: var(--v3d-surface-glass);
+        backdrop-filter: blur(20px);
+        -webkit-backdrop-filter: blur(20px);
+        border: 1px solid var(--v3d-border);
+        border-radius: var(--v3d-radius);
+        z-index: 25;
+        box-shadow: -8px 8px 30px rgba(0,0,0,0.45);
+        display: flex;
+        flex-direction: column;
+        transform: translateX(360px);
+        transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+        overflow: hidden;
+    }
+    .v3d-drawer.open {
+        transform: translateX(0);
+    }
+    .v3d-drawer-header {
+        padding: 14px 16px;
+        border-bottom: 1px solid var(--v3d-border);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+    }
+    .v3d-drawer-title {
+        font-size: 13.5px;
+        font-weight: 700;
+        color: #fff;
+        margin: 0;
+    }
+    .v3d-drawer-close {
+        background: transparent;
+        border: none;
+        color: var(--v3d-text-muted);
+        cursor: pointer;
+        font-size: 18px;
+        line-height: 1;
+        padding: 2px 6px;
+        border-radius: 4px;
+    }
+    .v3d-drawer-close:hover {
+        color: #fff;
+        background: rgba(255,255,255,0.08);
+    }
+    .v3d-drawer-body {
+        padding: 16px;
+        overflow-y: auto;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+    }
+    .v3d-prop-group {
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
+    }
+    .v3d-prop-label {
+        font-size: 10.5px;
+        text-transform: uppercase;
+        color: var(--v3d-text-muted);
+        letter-spacing: 0.5px;
+    }
+    .v3d-prop-val {
+        font-size: 12.5px;
+        font-weight: 600;
+        color: var(--v3d-text);
+    }
+
+    /* Progress Bar */
+    .v3d-progress-bar {
+        height: 7px;
+        background: rgba(255,255,255,0.08);
+        border-radius: 4px;
+        overflow: hidden;
+        margin-top: 4px;
+    }
+    .v3d-progress-fill {
+        height: 100%;
+        border-radius: 4px;
+        transition: width 0.4s ease;
+    }
+
+    /* Empty State */
+    .v3d-empty-state {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        text-align: center;
+        z-index: 10;
+        color: var(--v3d-text-muted);
+        pointer-events: none;
+    }
+    .v3d-empty-state h4 {
+        color: #fff;
+        font-size: 16px;
+        margin-bottom: 6px;
+    }
+
+    /* Bottom Help Pill */
+    .v3d-help-pill {
+        position: absolute;
+        bottom: 12px;
+        left: 14px;
+        padding: 4px 12px;
+        background: rgba(15, 17, 23, 0.75);
+        backdrop-filter: blur(10px);
+        border: 1px solid rgba(255, 255, 255, 0.06);
+        border-radius: 20px;
+        color: var(--v3d-text-muted);
+        font-size: 11px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        z-index: 20;
+    }
+
+    /* Thermal Button Active Glow */
+    #btn-thermal.active {
+        background: linear-gradient(135deg, #f59e0b 0%, #ef4444 100%);
+        color: #fff;
+        box-shadow: 0 2px 10px rgba(245, 158, 11, 0.45);
+    }
+
+    /* Floating Thermal Legend Card */
+    .v3d-thermal-legend {
+        position: absolute;
+        bottom: 12px;
+        right: 14px;
+        padding: 9px 13px;
+        background: var(--v3d-surface-glass);
+        backdrop-filter: blur(18px);
+        -webkit-backdrop-filter: blur(18px);
+        border: 1px solid var(--v3d-border);
+        border-radius: var(--v3d-radius);
+        color: var(--v3d-text);
+        font-size: 11px;
+        z-index: 22;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+        display: flex;
+        flex-direction: column;
+        gap: 5px;
+        min-width: 215px;
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        user-select: none;
+    }
+    .v3d-thermal-legend.hidden {
+        opacity: 0;
+        pointer-events: none;
+        transform: translateY(12px);
+    }
+    .v3d-legend-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        font-weight: 600;
+    }
+    .v3d-legend-title {
+        color: #f1f5f9;
+        font-size: 11.5px;
+        display: flex;
+        align-items: center;
+        gap: 4px;
+    }
+    .v3d-legend-live {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        font-size: 9px;
+        font-weight: 700;
+        color: #10b981;
+        background: rgba(16, 185, 129, 0.15);
+        padding: 2px 6px;
+        border-radius: 8px;
+        letter-spacing: 0.4px;
+    }
+    .v3d-live-dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: #10b981;
+        box-shadow: 0 0 6px #10b981;
+        animation: v3dPulse 1.8s infinite;
+    }
+    @keyframes v3dPulse {
+        0% { transform: scale(0.9); opacity: 0.8; }
+        50% { transform: scale(1.3); opacity: 1; }
+        100% { transform: scale(0.9); opacity: 0.8; }
+    }
+    .v3d-legend-bar {
+        height: 8px;
+        border-radius: 4px;
+        background: linear-gradient(to right, #0a23aa 0%, #005ffa 14%, #00d7f5 28%, #19e15a 44%, #dcf500 58%, #ffb400 72%, #ff3200 86%, #af050a 100%);
+        box-shadow: inset 0 1px 2px rgba(0,0,0,0.4);
+    }
+    .v3d-legend-scale {
+        display: flex;
+        justify-content: space-between;
+        font-size: 9px;
+        color: var(--v3d-text-muted);
+        text-align: center;
+        line-height: 1.15;
+    }
+    .v3d-legend-scale small {
+        color: #cbd5e1;
+        font-size: 8px;
+    }
+    .v3d-legend-stats {
+        display: flex;
+        justify-content: space-between;
+        padding-top: 4px;
+        border-top: 1px solid rgba(255, 255, 255, 0.08);
+        font-size: 10px;
+        color: var(--v3d-text-muted);
+    }
+    .v3d-legend-stats b {
+        color: #f8fafc;
+        font-weight: 600;
+    }
+</style>
+
+<div class="v3d-wrapper" id="v3d-wrapper">
+    <!-- 3D Canvas -->
+    <div id="v3d-canvas-container"></div>
+
+    <!-- Top Left Circular Info Button (Expand & Collapse) -->
+    <div class="v3d-stats-wrap">
+        <button class="v3d-stats-btn" id="btn-stats-toggle" title="Xem thông tin chi tiết (Racks, Tường, Cửa...)">
+            i
+        </button>
+        <div class="v3d-stats-card" id="v3d-stats-card">
+            <div class="v3d-stats-header">{{ object.name }}</div>
+            <div class="v3d-stats-row">
+                <span>Tủ Rack</span>
+                <strong id="stat-racks">0</strong>
+            </div>
+            <div class="v3d-stats-row">
+                <span>Bức tường</span>
+                <strong id="stat-walls">0</strong>
+            </div>
+            <div class="v3d-stats-row">
+                <span>Cửa chính</span>
+                <strong id="stat-doors">0</strong>
+            </div>
+            <div class="v3d-stats-row">
+                <span>Cửa sổ</span>
+                <strong id="stat-windows">0</strong>
+            </div>
+            <div class="v3d-stats-row">
+                <span>Tài sản</span>
+                <strong id="stat-assets">0</strong>
+            </div>
+        </div>
+    </div>
+
+    <!-- Redesigned Compact Floating Toolbar -->
+    <div class="v3d-toolbar">
+        <div class="v3d-seg-group">
+            <button class="v3d-seg-btn active" id="btn-isometric" title="Góc nhìn 3D Isometric">3D Room</button>
+            <button class="v3d-seg-btn" id="btn-topdown" title="Góc nhìn 2D từ trên xuống">Mặt bằng</button>
+        </div>
+
+        <div class="v3d-divider"></div>
+
+        <div class="v3d-seg-group" id="theme-seg-group">
+            <button class="v3d-seg-btn active" data-theme="cozy" title="Kiểu 1 (Căn phòng ấm áp)">Kiểu 1</button>
+            <button class="v3d-seg-btn" data-theme="datacenter" title="Kiểu 2 (Data Center chuẩn)">Kiểu 2</button>
+            <button class="v3d-seg-btn" data-theme="cyberpunk" title="Kiểu 3 (Cyberpunk Neon)">Kiểu 3</button>
+        </div>
+
+        <div class="v3d-seg-group">
+            <button class="v3d-seg-btn active" id="btn-shadows" title="Bật/Tắt bóng đổ">Bóng</button>
+            <button class="v3d-seg-btn active" id="btn-labels" title="Bật/Tắt nhãn tên">Nhãn</button>
+            <button class="v3d-seg-btn active" id="btn-autorotate" title="Tự động xoay quanh phòng">Xoay</button>
+        </div>
+
+        <div class="v3d-divider"></div>
+
+        <div class="v3d-seg-group" id="thermal-mode-group">
+            <button class="v3d-seg-btn active" id="btn-thermal" title="Bật/Tắt Biểu đồ Nhiệt độ Động 3D (Thermal Heatmap)">🔥 Nhiệt độ</button>
+            <button class="v3d-seg-btn active" id="btn-thermal-intensity" title="Chuyển mức độ rõ màu nhiệt độ: Đậm nét (mặc định) / Tiêu chuẩn / Dịu nhẹ">Đậm nét</button>
+        </div>
+
+        <div class="v3d-divider"></div>
+
+        <div class="v3d-seg-group">
+            <button class="v3d-seg-btn" id="btn-reset-cam" title="Đặt lại góc nhìn chuẩn">Reset</button>
+            <button class="v3d-seg-btn" id="btn-fullscreen" title="Toàn màn hình">Toàn màn hình</button>
+        </div>
+    </div>
+
+    <!-- Hover Tooltip -->
+    <div class="v3d-tooltip" id="v3d-tooltip"></div>
+
+    <!-- Inspect Drawer -->
+    <div class="v3d-drawer" id="v3d-drawer">
+        <div class="v3d-drawer-header">
+            <h5 class="v3d-drawer-title" id="drawer-title">Chi tiết đối tượng</h5>
+            <button class="v3d-drawer-close" id="drawer-close">&times;</button>
+        </div>
+        <div class="v3d-drawer-body" id="drawer-body"></div>
+    </div>
+
+    <!-- Modal Edit Individual Temperature Range in 3D -->
+    <div id="v3d-temp-modal" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.65); backdrop-filter: blur(5px); z-index: 99999; justify-content: center; align-items: center;">
+        <div style="background: #1e222d; border: 1px solid #30363d; border-radius: 12px; padding: 22px; width: 360px; display: flex; flex-direction: column; gap: 14px; box-shadow: 0 20px 40px rgba(0,0,0,0.6);">
+            <div style="border-bottom: 1px solid #30363d; padding-bottom: 10px;">
+                <h4 style="margin: 0; font-size: 15px; color: #fff;" id="v3d-temp-modal-title">Cấu hình Dải Nhiệt Độ</h4>
+                <span style="font-size: 11px; color: #8b949e;">Nhiệt độ sẽ tự động random trong [a, b] mỗi 10s</span>
+            </div>
+            <div style="display: flex; gap: 12px;">
+                <div style="flex: 1;">
+                    <label style="font-size: 11px; font-weight: 600; color: #8b949e;">Nhiệt độ Min (a):</label>
+                    <div style="display: flex; align-items: center; background: #0d1117; border: 1px solid #30363d; border-radius: 6px; padding: 4px 8px; margin-top: 4px;">
+                        <input type="number" id="v3d-temp-min" step="0.5" style="width: 100%; background: transparent; border: none; color: #fff; font-size: 15px; font-weight: 700; outline: none;">
+                        <span style="font-size: 11px; color: #8b949e;">°C</span>
+                    </div>
+                </div>
+                <div style="flex: 1;">
+                    <label style="font-size: 11px; font-weight: 600; color: #8b949e;">Nhiệt độ Max (b):</label>
+                    <div style="display: flex; align-items: center; background: #0d1117; border: 1px solid #30363d; border-radius: 6px; padding: 4px 8px; margin-top: 4px;">
+                        <input type="number" id="v3d-temp-max" step="0.5" style="width: 100%; background: transparent; border: none; color: #fff; font-size: 15px; font-weight: 700; outline: none;">
+                        <span style="font-size: 11px; color: #8b949e;">°C</span>
+                    </div>
+                </div>
+            </div>
+            <div id="v3d-temp-error" style="display: none; font-size: 11px; color: #f87171; font-weight: 600;"></div>
+            <div style="display: flex; justify-content: flex-end; gap: 8px; border-top: 1px solid #30363d; padding-top: 12px;">
+                <button class="btn btn-sm btn-secondary" onclick="close3DTempEditModal()">Hủy</button>
+                <button class="btn btn-sm btn-primary" id="v3d-btn-save-temp" onclick="save3DTemp()">Lưu & Cập Nhật</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Empty State -->
+    <div class="v3d-empty-state" id="v3d-empty-state" style="display:none;">
+        <h4>Chưa có vật thể nào trong mặt bằng</h4>
+        <p>Vui lòng chuyển qua tab <strong>Visualization (2D)</strong> để kéo thả tường, tủ rack hoặc thiết bị vào phòng.</p>
+    </div>
+
+    <!-- Bottom Help Controls -->
+    <div class="v3d-help-pill">
+        <span>🖱️ <strong>Chuột trái:</strong> Xoay 360°</span>
+        <span>🖱️ <strong>Con lăn:</strong> Zoom</span>
+        <span>🖱️ <strong>Chuột phải:</strong> Di chuyển</span>
+        <span>🎯 <strong>Click:</strong> Xem thông số</span>
+    </div>
+
+    <!-- Floating Thermal Legend Card -->
+    <div class="v3d-thermal-legend" id="v3d-thermal-legend">
+        <div class="v3d-legend-header">
+            <span class="v3d-legend-title">🔥 Dải Nhiệt độ 3D</span>
+            <span class="v3d-legend-live"><span class="v3d-live-dot"></span>LIVE 5s</span>
+        </div>
+        <div class="v3d-legend-bar"></div>
+        <div class="v3d-legend-scale">
+            <span>≤10°C<br><small>Lạnh</small></span>
+            <span>17.5°C<br><small>Mát</small></span>
+            <span>25°C<br><small>Phòng (25°C)</small></span>
+            <span>32.5°C<br><small>Ấm</small></span>
+            <span>≥40°C<br><small>Nóng</small></span>
+        </div>
+        <div class="v3d-legend-stats" id="v3d-legend-stats">
+            <span>TB: <b id="stat-temp-avg">--°C</b></span>
+            <span>Min: <b id="stat-temp-min">--°C</b></span>
+            <span>Max: <b id="stat-temp-max">--°C</b></span>
+        </div>
+    </div>
+</div>
+
+<script>
+(function() {
+    'use strict';
+
+    const LOCATION_ID = {{ object.pk }};
+    const API_URL = `/api/plugins/rack-layout/layout/${LOCATION_ID}/`;
+
+    // ===== THEME DEFINITIONS =====
+    const THEMES = {
+        cozy: {
+            name: 'Diorama Căn Phòng Ấm Áp',
+            bg: 0xd9cfbf,
+            fog: 0xd9cfbf,
+            floorTop: 0xe8e2d8,
+            floorSide: 0xb8ada0,
+            floorGrid: 0xc8bcad,
+            wall: 0xc67d67,        // Tông cam đất ấm áp như ảnh mẫu tham chiếu
+            wallTop: 0xa8604b,
+            wallTrim: 0x8a4b39,
+            doorFrame: 0x8b5a2b,
+            doorLeaf: 0xa06535,
+            windowFrame: 0xf5f2eb,
+            rackChassis: 0x3d3834,
+            rackDoor: 0x4a443e,
+            ambientLight: 0xfff6ea,
+            ambientIntensity: 0.65,
+            dirLight: 0xfffaed,
+            dirIntensity: 0.85,
+            accentLight: 0xffaa80
+        },
+        datacenter: {
+            name: 'Data Center Hiện Đại',
+            bg: 0x0e1018,
+            fog: 0x0e1018,
+            floorTop: 0x202432,
+            floorSide: 0x131620,
+            floorGrid: 0x2e3447,
+            wall: 0x475569,
+            wallTop: 0x334155,
+            wallTrim: 0x1e293b,
+            doorFrame: 0x334155,
+            doorLeaf: 0x1e293b,
+            windowFrame: 0x64748b,
+            rackChassis: 0x181a22,
+            rackDoor: 0x242836,
+            ambientLight: 0xcfd8dc,
+            ambientIntensity: 0.45,
+            dirLight: 0xffffff,
+            dirIntensity: 0.9,
+            accentLight: 0x38bdf8
+        },
+        cyberpunk: {
+            name: 'Cyberpunk Neon',
+            bg: 0x070814,
+            fog: 0x070814,
+            floorTop: 0x121426,
+            floorSide: 0x090a13,
+            floorGrid: 0x24294d,
+            wall: 0x3b1d5c,
+            wallTop: 0x2a1343,
+            wallTrim: 0x1d0b30,
+            doorFrame: 0x7928ca,
+            doorLeaf: 0x211138,
+            windowFrame: 0x00f5d4,
+            rackChassis: 0x12131f,
+            rackDoor: 0x1b1e33,
+            ambientLight: 0xa855f7,
+            ambientIntensity: 0.4,
+            dirLight: 0x00f5d4,
+            dirIntensity: 0.8,
+            accentLight: 0xf43f5e
+        }
+    };
+
+    let currentThemeKey = 'cozy';
+    let currentTheme = THEMES[currentThemeKey];
+
+    // ===== THREE.JS CORE =====
+    const wrapper = document.getElementById('v3d-wrapper');
+    const container = document.getElementById('v3d-canvas-container');
+    let scene, camera, renderer, controls;
+    let dirLight, ambLight, accentLight;
+    let floorGroup = new THREE.Group();
+    let objectsGroup = new THREE.Group();
+    let labelsGroup = new THREE.Group();
+    let interactiveObjects = [];
+
+    // Raycaster
+    const raycaster = new THREE.Raycaster();
+    const mouse = new THREE.Vector2();
+    let hoveredObject = null;
+    let selectedObject = null;
+
+    // UI elements
+    const tooltipEl = document.getElementById('v3d-tooltip');
+    const drawerEl = document.getElementById('v3d-drawer');
+    const drawerTitleEl = document.getElementById('drawer-title');
+    const drawerBodyEl = document.getElementById('drawer-body');
+    const drawerCloseBtn = document.getElementById('drawer-close');
+    const emptyStateEl = document.getElementById('v3d-empty-state');
+
+    const statRacksEl = document.getElementById('stat-racks');
+    const statWallsEl = document.getElementById('stat-walls');
+    const statDoorsEl = document.getElementById('stat-doors');
+    const statWindowsEl = document.getElementById('stat-windows');
+    const statAssetsEl = document.getElementById('stat-assets');
+
+    const btnIsometric = document.getElementById('btn-isometric');
+    const btnTopDown = document.getElementById('btn-topdown');
+    const themeSegGroup = document.getElementById('theme-seg-group');
+    const btnShadows = document.getElementById('btn-shadows');
+    const btnLabels = document.getElementById('btn-labels');
+    const btnAutoRotate = document.getElementById('btn-autorotate');
+    const btnResetCam = document.getElementById('btn-reset-cam');
+    const btnFullscreen = document.getElementById('btn-fullscreen');
+    const btnStatsToggle = document.getElementById('btn-stats-toggle');
+    const statsCard = document.getElementById('v3d-stats-card');
+
+    // ===== DYNAMIC 3D THERMAL MAP (HEATMAP LAYER) STATE =====
+    let thermalGroup = new THREE.Group();
+    let hotspotGroup = new THREE.Group(); // Quầng nhiệt điểm nóng và cột luồng khí đối lưu cho thiết bị báo đỏ
+    let smokeGroup = new THREE.Group();   // Luồng các đường khói chuyển động từ devices ra ngoài, dừng ở vách tường
+    let isThermalEnabled = true;
+    let thermalInterval = null;
+    let thermalFloorMesh = null;
+    let thermalFloorMat = null;
+    let thermalFloorUniforms = null;
+    let thermalIntensityLevel = 0; // 0: Đậm nét (mặc định), 1: Tiêu chuẩn, 2: Dịu nhẹ
+    const THERMAL_LEVELS = [
+        { label: 'Đậm nét', floorOpacity: 0.88, volumeIntensity: 1.35 },
+        { label: 'Tiêu chuẩn', floorOpacity: 0.65, volumeIntensity: 1.00 },
+        { label: 'Dịu nhẹ', floorOpacity: 0.40, volumeIntensity: 0.65 }
+    ];
+    const rackTempMap = new Map(); // key: rackId -> { temp, min_temp, max_temp, status, name }
+    const deviceTempMap = new Map(); // key: `${type}_${id}` (ví dụ 'rack_1', 'asset_12') -> full temp info
+    const registered3DDevices = new Map(); // key: `${type}_${id}` -> { type, id, mesh, ledMesh, sprite, x, y, z, w, h, rot }
+    const criticalPulsingItems = []; // Danh sách LED và hào quang các thiết bị quá nhiệt để nhấp nháy cảnh báo
+    let smokePointsMesh = null;
+    let smokeParticlesData = [];
+    let roomCollisionBoxes = [];
+    let roomCollisionBoundary = { minX: -250, maxX: 250, minZ: -250, maxZ: 250 };
+    let currentRoomW = 500, currentRoomH = 500;
+    let currentRacks3D = [];
+
+    const btnThermal = document.getElementById('btn-thermal');
+    const thermalLegendEl = document.getElementById('v3d-thermal-legend');
+    const statTempAvgEl = document.getElementById('stat-temp-avg');
+    const statTempMinEl = document.getElementById('stat-temp-min');
+    const statTempMaxEl = document.getElementById('stat-temp-max');
+
+    // Standard Room Dimensions: Tủ rack cao bằng 2/3 chiều cao tường (WALL_HEIGHT = RACK_HEIGHT * 1.5)
+    const RACK_HEIGHT = 135;
+    const WALL_HEIGHT = RACK_HEIGHT * 1.5; // 202.5: Tủ rack (135) bằng đúng 2/3 chiều cao tường
+    const DOOR_HEIGHT = 145; // Chiều cao cửa chính chuẩn, cao hơn tủ rack để người và thiết bị đi lại
+    const WINDOW_HEIGHT = 85; // Chiều cao cửa sổ
+    const WINDOW_BOTTOM_OFFSET = 60; // Khoảng cách từ sàn đến bậu cửa sổ
+
+    // ===== INIT THREE.JS SCENE =====
+    function initScene() {
+        scene = new THREE.Scene();
+        scene.background = new THREE.Color(currentTheme.bg);
+        scene.fog = new THREE.Fog(currentTheme.fog, 600, 2400);
+
+        const aspect = container.clientWidth / container.clientHeight;
+        camera = new THREE.PerspectiveCamera(38, aspect, 6, 3500);
+        
+        renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: "high-performance" });
+        renderer.setSize(container.clientWidth, container.clientHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        container.appendChild(renderer.domElement);
+
+        controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.08;
+        controls.maxPolarAngle = Math.PI / 2.05;
+        controls.minDistance = 80;
+        controls.maxDistance = 2200;
+
+        setIsometricView();
+
+        // Lighting
+        ambLight = new THREE.AmbientLight(currentTheme.ambientLight, currentTheme.ambientIntensity);
+        scene.add(ambLight);
+
+        dirLight = new THREE.DirectionalLight(currentTheme.dirLight, currentTheme.dirIntensity);
+        dirLight.position.set(500, 650, 400);
+        dirLight.castShadow = true;
+        dirLight.shadow.mapSize.width = 2048;
+        dirLight.shadow.mapSize.height = 2048;
+        dirLight.shadow.camera.near = 100;
+        dirLight.shadow.camera.far = 2000;
+        const d = 650;
+        dirLight.shadow.camera.left = -d;
+        dirLight.shadow.camera.right = d;
+        dirLight.shadow.camera.top = d;
+        dirLight.shadow.camera.bottom = -d;
+        dirLight.shadow.bias = -0.0004;
+        scene.add(dirLight);
+
+        accentLight = new THREE.PointLight(currentTheme.accentLight, 0.7, 950);
+        accentLight.position.set(-250, 320, -250);
+        scene.add(accentLight);
+
+        scene.add(floorGroup);
+        scene.add(objectsGroup);
+        scene.add(labelsGroup);
+        scene.add(thermalGroup);
+        scene.add(hotspotGroup);
+        scene.add(smokeGroup);
+
+        // Window & Container resize
+        window.addEventListener('resize', onWindowResize);
+        container.addEventListener('mousemove', onMouseMove);
+        container.addEventListener('click', onMouseClick);
+        drawerCloseBtn.addEventListener('click', closeDrawer);
+
+        setupToolbarEvents();
+    }
+
+    function setIsometricView() {
+        controls.target.set(0, 40, 0);
+        camera.position.set(480, 460, 480);
+        controls.update();
+    }
+
+    function setTopDownView() {
+        controls.target.set(0, 0, 0);
+        camera.position.set(0, 750, 0.01);
+        controls.update();
+    }
+
+    function onWindowResize() {
+        if (!container || !renderer || !camera) return;
+        const width = container.clientWidth;
+        const height = container.clientHeight;
+        camera.aspect = width / height;
+        camera.updateProjectionMatrix();
+        renderer.setSize(width, height);
+    }
+
+    function applyTheme(themeKey) {
+        currentThemeKey = themeKey;
+        currentTheme = THEMES[themeKey];
+
+        scene.background.setHex(currentTheme.bg);
+        scene.fog.color.setHex(currentTheme.fog);
+
+        ambLight.color.setHex(currentTheme.ambientLight);
+        ambLight.intensity = currentTheme.ambientIntensity;
+        dirLight.color.setHex(currentTheme.dirLight);
+        dirLight.intensity = currentTheme.dirIntensity;
+        accentLight.color.setHex(currentTheme.accentLight);
+
+        // Cập nhật trạng thái active của nút chọn kiểu phòng liền mạch
+        const themeBtns = document.querySelectorAll('#theme-seg-group .v3d-seg-btn');
+        themeBtns.forEach(btn => {
+            btn.classList.toggle('active', btn.dataset.theme === themeKey);
+        });
+
+        rebuildRoom();
+    }
+
+    // ===== 3D ROOM RECONSTRUCTION ENGINE =====
+    let layoutData = null;
+
+    async function loadData() {
+        try {
+            const resp = await fetch(API_URL);
+            if (!resp.ok) throw new Error('API error');
+            layoutData = await resp.json();
+            rebuildRoom();
+        } catch (e) {
+            console.error('Error loading layout 3D data:', e);
+            emptyStateEl.style.display = 'block';
+        }
+    }
+
+    // ===== TÌM CÁC CỬA CHÍNH VÀ CỬA SỔ NẰM TRÊN TƯỜNG ĐỂ ĐỤC XUYÊN TƯỜNG =====
+    function findOpeningsOnWall(wallObj, allOpenings) {
+        const isV = (wallObj.height && wallObj.width && wallObj.height > wallObj.width);
+        const wallLength = isV ? Math.max(wallObj.height || 60, 20) : Math.max(wallObj.width || 60, 20);
+        const wallThickness = 20;
+        const rotRad = ((wallObj.rotation || 0) * Math.PI) / 180;
+        let dirX, dirY, normX, normY;
+        if (isV) {
+            dirX = -Math.sin(rotRad);
+            dirY = Math.cos(rotRad);
+            normX = Math.cos(rotRad);
+            normY = Math.sin(rotRad);
+        } else {
+            dirX = Math.cos(rotRad);
+            dirY = Math.sin(rotRad);
+            normX = -Math.sin(rotRad);
+            normY = Math.cos(rotRad);
+        }
+
+        const wallStartX = wallObj.x;
+        const wallStartY = wallObj.y;
+
+        const matched = [];
+
+        allOpenings.forEach(item => {
+            const itemRot = ((item.rotation || 0) * Math.PI) / 180;
+            const itemW = item.width || (item.object_type === 'door_1' ? 50 : 80);
+            const itemH = item.height || (item.object_type === 'door_1' ? 50 : 15);
+
+            // Tâm của vật thể 2D
+            const itemCenterX = item.x + (itemW / 2) * Math.cos(itemRot) - (itemH / 2) * Math.sin(itemRot);
+            const itemCenterY = item.y + (itemW / 2) * Math.sin(itemRot) + (itemH / 2) * Math.cos(itemRot);
+
+            const vx = itemCenterX - wallStartX;
+            const vy = itemCenterY - wallStartY;
+
+            const projS = vx * dirX + vy * dirY;
+            const projDist = Math.abs(vx * normX + vy * normY - wallThickness / 2);
+
+            // Ngưỡng: khoảng cách đến tim tường <= bề dày tường + 28px và hình chiếu nằm trong phạm vi tường
+            if (projDist <= wallThickness + 28 && projS >= -15 && projS <= wallLength + 15) {
+                const isDoor = (item.object_type === 'door_1');
+                const openW = Math.max(itemW, isDoor ? 48 : 50);
+                const startS = Math.max(0, projS - openW / 2);
+                const endS = Math.min(wallLength, projS + openW / 2);
+
+                if (endS > startS + 5) {
+                    matched.push({
+                        type: isDoor ? 'door' : 'window',
+                        item: item,
+                        start: startS,
+                        end: endS,
+                        mid: (startS + endS) / 2,
+                        width: endS - startS
+                    });
+                }
+            }
+        });
+
+        matched.sort((a, b) => a.start - b.start);
+
+        // Khử đè lấn ô đục
+        const clean = [];
+        matched.forEach(op => {
+            if (clean.length === 0) {
+                clean.push(op);
+            } else {
+                const prev = clean[clean.length - 1];
+                if (op.start < prev.end) {
+                    op.start = Math.min(prev.end + 2, wallLength - 10);
+                    op.end = Math.max(op.start + 15, op.end);
+                    op.mid = (op.start + op.end) / 2;
+                    op.width = op.end - op.start;
+                    if (op.end <= wallLength && op.width >= 15) {
+                        clean.push(op);
+                    }
+                } else {
+                    clean.push(op);
+                }
+            }
+        });
+
+        return clean;
+    }
+
+    function getObject2DDimensions(obj) {
+        let w = Number(obj.width) || 0;
+        let h = Number(obj.height) || 0;
+        if (w <= 0 || h <= 0) {
+            if (obj.object_type === 'rack') {
+                w = w > 0 ? w : 105;
+                h = h > 0 ? h : 140;
+            } else if (obj.object_type === 'asset') {
+                w = w > 0 ? w : 110;
+                h = h > 0 ? h : 70;
+            } else if (obj.object_type === 'door_1') {
+                w = w > 0 ? w : 50;
+                h = h > 0 ? h : 50;
+            } else if (obj.object_type === 'door_2' || (obj.object_type && obj.object_type.startsWith('window_'))) {
+                w = w > 0 ? w : 80;
+                h = h > 0 ? h : 15;
+            } else {
+                w = w > 0 ? w : 60;
+                h = h > 0 ? h : 60;
+            }
+        }
+        return { w, h };
+    }
+
+    function rebuildRoom() {
+        if (!layoutData) return;
+
+        while (floorGroup.children.length > 0) floorGroup.remove(floorGroup.children[0]);
+        while (objectsGroup.children.length > 0) objectsGroup.remove(objectsGroup.children[0]);
+        while (labelsGroup.children.length > 0) labelsGroup.remove(labelsGroup.children[0]);
+        while (hotspotGroup.children.length > 0) {
+            const child = hotspotGroup.children[0];
+            if (child.geometry) child.geometry.dispose();
+            if (child.material) child.material.dispose();
+            hotspotGroup.remove(child);
+        }
+        while (smokeGroup.children.length > 0) {
+            const child = smokeGroup.children[0];
+            if (child.geometry) child.geometry.dispose();
+            if (child.material) child.material.dispose();
+            smokeGroup.remove(child);
+        }
+        smokeParticlesData = [];
+        registered3DDevices.clear();
+        criticalPulsingItems.length = 0;
+        interactiveObjects = [];
+
+        const objects = layoutData.objects || [];
+        const racks = layoutData.racks || [];
+        const assets = layoutData.assets || [];
+
+        // 1. Chỉ tính tường, cửa chính, cửa sổ và thiết bị sàn trên mặt phẳng location chung (không lấy đồ chi tiết tường)
+        const locationFloorObjects = objects.filter(o => o.parent_type !== 'wall' && !['door_wall', 'window_wall'].includes(o.object_type));
+
+        // 2. Những đồ thuộc assets, racks, smartlocks được gắn lên trong chi tiết tường (parent_type === 'wall')
+        // Không hiển thị door_wall, window_wall hoặc bất kỳ items nào khác trong chi tiết tường
+        const wallMountedObjects = objects.filter(o => o.parent_type === 'wall' && ['asset', 'rack', 'smartlock'].includes(o.object_type));
+
+        // Gom đồ gắn tường theo wall ID (hỗ trợ cả parent_id là object_id hoặc id của bức tường cha)
+        const wallChildrenMap = new Map();
+        wallMountedObjects.forEach(item => {
+            const pid = String(item.parent_id);
+            if (!wallChildrenMap.has(pid)) {
+                wallChildrenMap.set(pid, []);
+            }
+            wallChildrenMap.get(pid).push(item);
+        });
+
+        const walls = locationFloorObjects.filter(o => o.object_type === 'wall');
+        const floorDoors = locationFloorObjects.filter(o => o.object_type === 'door_1');
+        const floorWindows = locationFloorObjects.filter(o => o.object_type === 'door_2' || o.object_type.startsWith('window_'));
+
+        const floorRacks = locationFloorObjects.filter(o => o.object_type === 'rack');
+        const wallRacks = wallMountedObjects.filter(o => o.object_type === 'rack');
+        const totalRacksCount = racks.length || (floorRacks.length + wallRacks.length);
+
+        const floorAssets = locationFloorObjects.filter(o => o.object_type === 'asset');
+        const wallAssets = wallMountedObjects.filter(o => o.object_type === 'asset');
+        const totalAssetsCount = assets.length || (floorAssets.length + wallAssets.length);
+
+        statRacksEl.textContent = totalRacksCount;
+        statWallsEl.textContent = walls.length;
+        statDoorsEl.textContent = floorDoors.length;
+        statWindowsEl.textContent = floorWindows.length;
+        statAssetsEl.textContent = totalAssetsCount;
+
+        if (locationFloorObjects.length === 0 && racks.length === 0) {
+            emptyStateEl.style.display = 'block';
+            buildDioramaBase(500, 500, 0, 0);
+            return;
+        }
+        emptyStateEl.style.display = 'none';
+
+        // 1. Calculate Bounding Box of all 2D objects on common floor plan
+        let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+
+        locationFloorObjects.forEach(obj => {
+            const { w, h } = getObject2DDimensions(obj);
+            const rot = (obj.rotation || 0) * Math.PI / 180;
+            const cos = Math.cos(rot);
+            const sin = Math.sin(rot);
+
+            // 4 corners of the 2D object
+            const corners = [
+                { x: obj.x, y: obj.y },
+                { x: obj.x + w * cos, y: obj.y + w * sin },
+                { x: obj.x - h * sin, y: obj.y + h * cos },
+                { x: obj.x + w * cos - h * sin, y: obj.y + w * sin + h * cos }
+            ];
+
+            corners.forEach(c => {
+                minX = Math.min(minX, c.x);
+                maxX = Math.max(maxX, c.x);
+                minY = Math.min(minY, c.y);
+                maxY = Math.max(maxY, c.y);
+            });
+        });
+
+        if (minX === Infinity) { minX = 0; maxX = 500; minY = 0; maxY = 500; }
+
+        const pad = 70;
+        const roomW = Math.max(380, (maxX - minX) + pad * 2);
+        const roomH = Math.max(380, (maxY - minY) + pad * 2);
+        const centerX = minX - pad + roomW / 2;
+        const centerZ = minY - pad + roomH / 2;
+
+        // Build Diorama Floor Slab
+        buildDioramaBase(roomW, roomH, centerX, centerZ);
+
+        const rackMap = new Map(racks.map(r => [r.id, r]));
+        const assetMap = new Map(assets.map(a => [a.id, a]));
+
+        // 2. Build Solid Walls on Common Floor Plan (đục xuyên tường cho cửa chính & cửa sổ, gắn assets/racks)
+        const allFloorOpenings = [...floorDoors, ...floorWindows];
+        const placedOpeningsOnWalls = new Set();
+
+        // Thu thập các hộp va chạm của tường để các đường khói chạm tường thì dừng lại
+        const wallCollisionBoxes = [];
+        walls.forEach(wObj => {
+            const wId1 = String(wObj.object_id);
+            const wId2 = String(wObj.id);
+            const wChildren = [
+                ...(wallChildrenMap.get(wId1) || []),
+                ...(wId2 !== wId1 && wallChildrenMap.has(wId2) ? wallChildrenMap.get(wId2) : [])
+            ];
+            const wallOpenings = findOpeningsOnWall(wObj, allFloorOpenings);
+            wallOpenings.forEach(op => {
+                placedOpeningsOnWalls.add(op.item.id);
+            });
+            createSolidWall3D(wObj, centerX, centerZ, wChildren, wallOpenings);
+
+            // Bounding box va chạm cho bức tường
+            const { w, h } = getObject2DDimensions(wObj);
+            const rot = (wObj.rotation || 0) * Math.PI / 180;
+            const cos = Math.cos(rot);
+            const sin = Math.sin(rot);
+            const center2dX = wObj.x + (w / 2) * cos - (h / 2) * sin;
+            const center2dY = wObj.y + (w / 2) * sin + (h / 2) * cos;
+            const wx = center2dX - centerX;
+            const wz = center2dY - centerZ;
+
+            wallCollisionBoxes.push({
+                x: wx,
+                z: wz,
+                w: w,
+                h: h,
+                cos: Math.cos(-rot),
+                sin: Math.sin(-rot),
+                halfLen: w / 2,
+                halfThick: Math.max(h, 16) / 2 + 5
+            });
+        });
+
+        // 3. Build Objects on Common Floor Plan (Racks, Floor Assets, và bất kỳ cửa tự do nào chưa gắn vào tường)
+        const racksIn3D = [];
+        locationFloorObjects.forEach(obj => {
+            if (obj.object_type === 'wall') return;
+            if (placedOpeningsOnWalls.has(obj.id)) return; // Đã được đục xuyên tường
+
+            const { w, h } = getObject2DDimensions(obj);
+            const rot = (obj.rotation || 0) * Math.PI / 180;
+            const cos = Math.cos(rot);
+            const sin = Math.sin(rot);
+
+            // Tâm chính xác của vật thể 2D
+            const objCenter2dX = obj.x + (w / 2) * cos - (h / 2) * sin;
+            const objCenter2dY = obj.y + (w / 2) * sin + (h / 2) * cos;
+            const posX = objCenter2dX - centerX;
+            const posZ = objCenter2dY - centerZ;
+
+            if (obj.object_type === 'rack') {
+                const rData = rackMap.get(obj.object_id) || {};
+                createRack3D(obj, rData, posX, posZ, w, h, -rot);
+                racksIn3D.push({
+                    id: obj.object_id,
+                    name: rData.name || `Rack #${obj.object_id}`,
+                    x: posX,
+                    z: posZ,
+                    w: w,
+                    h: h,
+                    rot: -rot,
+                    u_height: rData.u_height || 42
+                });
+            } else if (obj.object_type === 'asset') {
+                const aData = assetMap.get(obj.object_id) || {};
+                createAsset3D(obj, aData, posX, posZ, w, h, -rot);
+            } else if (obj.object_type === 'door_1') {
+                // Cửa chính mặt bằng tự do
+                createFloorDoor3D(obj, posX, posZ, w, h, -rot);
+            } else if (obj.object_type === 'door_2' || obj.object_type.startsWith('window_')) {
+                // Cửa sổ mặt bằng tự do
+                createFloorWindow3D(obj, posX, posZ, w, h, -rot);
+            }
+        });
+
+        // Biên giới hạn hình khối căn phòng (Room Bounding Box: khói chạm biên phòng thì dừng lại)
+        const halfW = roomW / 2;
+        const halfH = roomH / 2;
+        const wallMargin = 12;
+        const roomBoundary = {
+            minX: -halfW + wallMargin,
+            maxX:  halfW - wallMargin,
+            minZ: -halfH + wallMargin,
+            maxZ:  halfH - wallMargin
+        };
+
+        // 4. Khởi tạo biểu đồ nhiệt và Hệ thống luồng khói di chuyển trong hình khối căn phòng
+        buildThermalPlanes(roomW, roomH, racksIn3D);
+        buildRoomSmokeSystem(roomW, roomH, roomBoundary, wallCollisionBoxes);
+    }
+
+    // ===== 3D CFD THERMAL SIMULATION ENGINE =====
+    // Turbo / Jet Scientific Colormap LUT: 8 key control points with smooth cubic Hermite interpolation
+    const CFD_COLOR_STOPS = [
+        { t: 0.00, r: 10,  g: 35,  b: 170 }, // 15°C: Deep Royal Blue (Lạnh)
+        { t: 0.25, r: 0,   g: 170, b: 245 }, // 20°C: Sky Blue / Cyan (Mát)
+        { t: 0.50, r: 25,  g: 225, b: 90  }, // 25°C: Emerald Green (Nhiệt độ phòng chuẩn 25°C)
+        { t: 0.65, r: 215, g: 240, b: 10  }, // 28°C: Lime Yellow (Ấm nhẹ)
+        { t: 0.75, r: 255, g: 180, b: 0   }, // 30°C: Golden Amber (Ấm)
+        { t: 0.90, r: 255, g: 60,  b: 0   }, // 33°C: Fiery Orange-Red (Nóng)
+        { t: 1.00, r: 175, g: 5,   b: 10  }  // 35°C+: Deep Crimson Red (Quá nhiệt)
+    ];
+
+    function sampleCfdColor(temp) {
+        const minT = 10.0;
+        const maxT = 40.0;
+        const norm = Math.max(0, Math.min(1, (temp - minT) / (maxT - minT)));
+
+        for (let i = 0; i < CFD_COLOR_STOPS.length - 1; i++) {
+            const s1 = CFD_COLOR_STOPS[i];
+            const s2 = CFD_COLOR_STOPS[i + 1];
+            if (norm >= s1.t && norm <= s2.t) {
+                const f = (norm - s1.t) / (s2.t - s1.t);
+                // Hermite smoothstep for buttery-soft organic transitions between colors
+                const smoothF = f * f * (3 - 2 * f);
+                return [
+                    Math.round(s1.r + (s2.r - s1.r) * smoothF),
+                    Math.round(s1.g + (s2.g - s1.g) * smoothF),
+                    Math.round(s1.b + (s2.b - s1.b) * smoothF)
+                ];
+            }
+        }
+        const last = CFD_COLOR_STOPS[CFD_COLOR_STOPS.length - 1];
+        return [last.r, last.g, last.b];
+    }
+
+    function getThermalStatus(temp) {
+        if (temp <= 20) return { label: 'Lạnh', color: '#0ea5e9' };
+        if (temp <= 26) return { label: 'Mát', color: '#10b981' };
+        if (temp <= 32) return { label: 'Ấm', color: '#f59e0b' };
+        return { label: 'Nóng', color: '#ef4444' };
+    }
+
+    let softParticleTexture = null;
+    function getSoftParticleTexture() {
+        if (softParticleTexture) return softParticleTexture;
+        const pCanvas = document.createElement('canvas');
+        pCanvas.width = 64;
+        pCanvas.height = 64;
+        const pCtx = pCanvas.getContext('2d');
+        const grad = pCtx.createRadialGradient(32, 32, 0, 32, 32, 32);
+        grad.addColorStop(0.0, 'rgba(255, 255, 255, 0.95)');
+        grad.addColorStop(0.25, 'rgba(255, 255, 255, 0.65)');
+        grad.addColorStop(0.55, 'rgba(255, 255, 255, 0.20)');
+        grad.addColorStop(1.0, 'rgba(255, 255, 255, 0.00)');
+        pCtx.fillStyle = grad;
+        pCtx.fillRect(0, 0, 64, 64);
+        softParticleTexture = new THREE.CanvasTexture(pCanvas);
+        return softParticleTexture;
+    }
+
+    // ===== 2D/3D CFD THERMAL FLOOR HEATMAP SHADER =====
+    // Chiếu trực tiếp trường nhiệt độ CFD lên mặt phẳng sàn phòng máy,
+    // đảm bảo hiển thị sắc nét các dải màu (xanh lạnh - vàng ấm - đỏ nóng) từ mọi góc nhìn, đặc biệt là góc nghiêng 45 độ.
+    const THERMAL_FLOOR_VERT_SHADER = `
+        varying vec3 vWorldPos;
+        void main() {
+            vec4 worldPos = modelMatrix * vec4(position, 1.0);
+            vWorldPos = worldPos.xyz;
+            gl_Position = projectionMatrix * viewMatrix * worldPos;
+        }
+    `;
+
+    const THERMAL_FLOOR_FRAG_SHADER = `
+        precision highp float;
+
+        uniform int uDeviceCount;
+        uniform vec3 uDeviceCenter[32];  // Tâm không gian thiết bị (world pos: x, y, z)
+        uniform float uDeviceTemp[32];   // Nhiệt độ tâm thiết bị (°C)
+        uniform float uDeviceRadius[32]; // Bán kính lan tỏa hình cầu
+        uniform float uFloorOpacity;    // Độ mờ sàn nhiệt
+
+        varying vec3 vWorldPos;
+
+        vec3 turboColor(float t) {
+            t = clamp(t, 0.0, 1.0);
+            vec3 c0 = vec3(0.039, 0.137, 0.667);
+            vec3 c1 = vec3(0.000, 0.373, 0.980);
+            vec3 c2 = vec3(0.000, 0.843, 0.961);
+            vec3 c3 = vec3(0.098, 0.882, 0.353);
+            vec3 c4 = vec3(0.863, 0.961, 0.000);
+            vec3 c5 = vec3(1.000, 0.706, 0.000);
+            vec3 c6 = vec3(1.000, 0.196, 0.000);
+            vec3 c7 = vec3(0.686, 0.020, 0.039);
+
+            float s = t * 7.0;
+            float f = fract(s);
+            float fs = f * f * (3.0 - 2.0 * f);
+
+            if (s < 1.0) return mix(c0, c1, fs);
+            if (s < 2.0) return mix(c1, c2, fs);
+            if (s < 3.0) return mix(c2, c3, fs);
+            if (s < 4.0) return mix(c3, c4, fs);
+            if (s < 5.0) return mix(c4, c5, fs);
+            if (s < 6.0) return mix(c5, c6, fs);
+            return mix(c6, c7, fs);
+        }
+
+        void main() {
+            // Nhiệt độ phòng tiêu chuẩn = 25.0°C
+            const float ROOM_TEMP = 25.0;
+            float temp = ROOM_TEMP;
+
+            // Mô hình phân tán nhiệt Gauss tự nhiên (Natural Thermal Dispersion)
+            // Triệt tiêu 100% hiện tượng mặt cắt đĩa phẳng (Shepard plateau artifact)
+            for (int i = 0; i < 32; i++) {
+                if (i >= uDeviceCount) break;
+
+                vec2 delta = vWorldPos.xz - uDeviceCenter[i].xz;
+                float distSq = dot(delta, delta);
+                float radiusSq = max(uDeviceRadius[i] * uDeviceRadius[i], 1.0);
+
+                // Suy giảm nhiệt độ Gauss êm dịu liền mạch từ tâm thiết bị
+                float w = exp(-distSq / (2.0 * radiusSq));
+                temp += (uDeviceTemp[i] - ROOM_TEMP) * w;
+            }
+
+            // Chuẩn hóa dải nhiệt độ đối xứng: 10°C (Lạnh) -> 25°C (Phòng chuẩn t=0.5) -> 40°C (Nóng)
+            // Tại 25°C, normT = 0.50 -> Màu Xanh lá cây mát chuẩn phòng
+            float normT = clamp((temp - 10.0) / 30.0, 0.0, 1.0);
+            vec3 col = turboColor(normT);
+
+            // Nâng cao độ tương phản và rực rỡ để nhìn rõ mồn một ở góc 45 độ và mọi hướng
+            col = pow(col, vec3(0.85));
+
+            gl_FragColor = vec4(col, uFloorOpacity);
+        }
+    `;
+
+    // ===== VOLUMETRIC FLUID DYNAMICS: GLSL SHADERS =====
+
+    // Vertex Shader: truyền tọa độ thực vào Fragment Shader
+    const THERMAL_VERT_SHADER = `
+        varying vec3 vWorldPos;
+        varying vec3 vLocalPos;
+        void main() {
+            vLocalPos = position;
+            vec4 worldPos = modelMatrix * vec4(position, 1.0);
+            vWorldPos = worldPos.xyz;
+            gl_Position = projectionMatrix * viewMatrix * worldPos;
+        }
+    `;
+
+    // Fragment Shader: Volumetric Raymarching Fluid Simulation
+    // Spherical Heat Radiation from Device Centers + Curl Noise + Beer-Lambert + Turbo Colormap
+    const THERMAL_FRAG_SHADER = `
+        precision highp float;
+
+        uniform float uTime;
+        uniform vec3 uBoxMin;
+        uniform vec3 uBoxMax;
+        uniform vec3 uCamPos;
+        uniform float uVolumeIntensity; // Hệ số khuếch đại độ đậm khối 3D
+
+        // Lấy tâm là trung tâm thiết bị (Racks, Assets) lan tỏa hình cầu ra ngoài
+        uniform int uDeviceCount;
+        uniform vec3 uDeviceCenter[32];  // Tâm không gian 3D của thiết bị (x, y, z)
+        uniform float uDeviceTemp[32];   // Nhiệt độ tâm thiết bị (°C)
+        uniform float uDeviceRadius[32]; // Bán kính lan tỏa nhiệt hình cầu
+
+        varying vec3 vWorldPos;
+        varying vec3 vLocalPos;
+
+        // --- Turbo Colormap (smooth, banding-free) ---
+        vec3 turboColor(float t) {
+            t = clamp(t, 0.0, 1.0);
+            vec3 c0 = vec3(0.039, 0.137, 0.667);
+            vec3 c1 = vec3(0.000, 0.373, 0.980);
+            vec3 c2 = vec3(0.000, 0.843, 0.961);
+            vec3 c3 = vec3(0.098, 0.882, 0.353);
+            vec3 c4 = vec3(0.863, 0.961, 0.000);
+            vec3 c5 = vec3(1.000, 0.706, 0.000);
+            vec3 c6 = vec3(1.000, 0.196, 0.000);
+            vec3 c7 = vec3(0.686, 0.020, 0.039);
+
+            float s = t * 7.0;
+            float f = fract(s);
+            float fs = f * f * (3.0 - 2.0 * f);
+
+            if (s < 1.0) return mix(c0, c1, fs);
+            if (s < 2.0) return mix(c1, c2, fs);
+            if (s < 3.0) return mix(c2, c3, fs);
+            if (s < 4.0) return mix(c3, c4, fs);
+            if (s < 5.0) return mix(c4, c5, fs);
+            if (s < 6.0) return mix(c5, c6, fs);
+            return mix(c6, c7, fs);
+        }
+
+        // --- 3D Simplex-style value noise (fast, smooth) ---
+        float hash(vec3 p) {
+            p = fract(p * vec3(0.1031, 0.1030, 0.0973));
+            p += dot(p, p.yxz + 33.33);
+            return fract((p.x + p.y) * p.z);
+        }
+        float noise3(vec3 p) {
+            vec3 i = floor(p);
+            vec3 f = fract(p);
+            vec3 u = f * f * (3.0 - 2.0 * f);
+            return mix(
+                mix(mix(hash(i+vec3(0,0,0)), hash(i+vec3(1,0,0)), u.x),
+                    mix(hash(i+vec3(0,1,0)), hash(i+vec3(1,1,0)), u.x), u.y),
+                mix(mix(hash(i+vec3(0,0,1)), hash(i+vec3(1,0,1)), u.x),
+                    mix(hash(i+vec3(0,1,1)), hash(i+vec3(1,1,1)), u.x), u.y),
+                u.z);
+        }
+
+        // --- Layered Curl Noise for organic swirling flow ---
+        float fbmCurl(vec3 p, float t) {
+            float v = 0.0;
+            float amp = 0.5;
+            float freq = 1.0;
+            for (int k = 0; k < 4; k++) {
+                vec3 q = p * freq + vec3(t * 0.18, t * 0.13, t * 0.22);
+                float n = noise3(q) - 0.5;
+                vec3 q2 = p * freq + vec3(t * 0.22 + 4.7, t * 0.18 + 2.3, t * 0.15 + 8.1);
+                float n2 = noise3(q2) - 0.5;
+                v += amp * (n + n2 * 0.5);
+                freq *= 2.1;
+                amp *= 0.48;
+            }
+            return v;
+        }
+
+        // --- Sample spherical temperature field at 3D world position ---
+        float sampleTemp(vec3 pos) {
+            // Nhiệt độ nền phòng máy là 25.0°C
+            const float ROOM_TEMP = 25.0;
+            float temp = ROOM_TEMP;
+
+            for (int i = 0; i < 32; i++) {
+                if (i >= uDeviceCount) break;
+
+                // Khoảng cách 3D từ điểm pos đến tâm thiết bị uDeviceCenter[i]
+                vec3 delta = pos - uDeviceCenter[i];
+                float distSq = dot(delta, delta);
+                float radiusSq = max(uDeviceRadius[i] * uDeviceRadius[i], 1.0);
+
+                // Lan tỏa nhiệt hình cầu 3D đối xứng từ tâm thiết bị
+                float weight = exp(-distSq / (2.0 * radiusSq));
+                temp += (uDeviceTemp[i] - ROOM_TEMP) * weight;
+            }
+            return temp;
+        }
+
+        // --- Volumetric Density: Khối cầu sương nhiệt độ tỏa ra từ tâm thiết bị ---
+        float sampleDensity(vec3 pos, float temp) {
+            const float ROOM_TEMP = 25.0;
+            float density = 0.0;
+
+            for (int i = 0; i < 32; i++) {
+                if (i >= uDeviceCount) break;
+
+                vec3 delta = pos - uDeviceCenter[i];
+                float dist = length(delta);
+                float R = uDeviceRadius[i];
+
+                float maxDist = R * 2.2;
+                if (dist < maxDist) {
+                    float normDist = dist / maxDist;
+                    // Hàm suy giảm Hermite C1-continuous mượt mà 100%, đạo hàm triệt tiêu tại biên (không bao giờ tạo mặt cắt)
+                    float fade = 1.0 - normDist * normDist * (3.0 - 2.0 * normDist);
+                    // Độ phân rã Gaussian hình cầu êm dịu liền mạch vào không gian phòng
+                    float sphereGrad = exp(-(dist * dist) / (1.8 * R * R)) * fade;
+                    float deltaT = abs(uDeviceTemp[i] - ROOM_TEMP);
+                    density += (deltaT * 0.0018 + 0.0008) * sphereGrad;
+                }
+            }
+
+            // Phai dần hoàn toàn về 0 khi tiến gần sát mặt sàn, triệt tiêu 100% hiện tượng mặt cắt (cross-section slice) cắt vào sàn
+            float floorFade = smoothstep(4.0, 36.0, pos.y);
+            float ceilingFade = 1.0 - smoothstep(185.0, 240.0, pos.y);
+            float hFactor = floorFade * ceilingFade;
+
+            // Suy giảm êm dịu ở các mép viền hộp thể tích, cho phép thiết bị gắn tường tỏa nhiệt tự nhiên vào phòng
+            float edgeDistX = min(pos.x - uBoxMin.x, uBoxMax.x - pos.x);
+            float edgeDistZ = min(pos.z - uBoxMin.z, uBoxMax.z - pos.z);
+            float boxFade = smoothstep(-15.0, 18.0, min(edgeDistX, edgeDistZ));
+
+            return density * hFactor * boxFade * uVolumeIntensity;
+        }
+
+        void main() {
+            vec3 rawDir = vWorldPos - uCamPos;
+            float rawLen = length(rawDir);
+            if (rawLen < 0.001) {
+                gl_FragColor = vec4(0.0);
+                return;
+            }
+            vec3 rayDir = rawDir / rawLen;
+            vec3 rayOrigin = uCamPos;
+
+            // An toàn chống chia cho 0 để không bị nhấp nháy / lỗi đồ họa khi xoay hoặc zoom
+            vec3 safeDir = vec3(
+                abs(rayDir.x) < 0.00001 ? (rayDir.x >= 0.0 ? 0.00001 : -0.00001) : rayDir.x,
+                abs(rayDir.y) < 0.00001 ? (rayDir.y >= 0.0 ? 0.00001 : -0.00001) : rayDir.y,
+                abs(rayDir.z) < 0.00001 ? (rayDir.z >= 0.0 ? 0.00001 : -0.00001) : rayDir.z
+            );
+            vec3 invDir = 1.0 / safeDir;
+            vec3 t0s = (uBoxMin - rayOrigin) * invDir;
+            vec3 t1s = (uBoxMax - rayOrigin) * invDir;
+            vec3 tMins = min(t0s, t1s);
+            vec3 tMaxs = max(t0s, t1s);
+            float tNear = max(max(tMins.x, tMins.y), tMins.z);
+            float tFar  = min(min(tMaxs.x, tMaxs.y), tMaxs.z);
+
+            if (tNear >= tFar || tFar <= 0.0) {
+                gl_FragColor = vec4(0.0);
+                return;
+            }
+
+            tNear = max(tNear, 0.0);
+
+            // Raymarch through volume
+            const int STEPS = 32;
+            float stepSize = (tFar - tNear) / float(STEPS);
+            float dither = 0.5;
+
+            vec3 accColor = vec3(0.0);
+            float transmittance = 1.0;
+
+            for (int s = 0; s < STEPS; s++) {
+                float tCur = tNear + (float(s) + dither) * stepSize;
+                vec3 samplePos = rayOrigin + rayDir * tCur;
+
+                // Uốn lượn mượt mà, ổn định không giật lắc
+                vec3 noiseCoord = samplePos * 0.005;
+                float curl = fbmCurl(noiseCoord, uTime * 0.15);
+                float swirl = curl * 6.0;
+                vec3 displaced = samplePos + vec3(
+                    sin(samplePos.z * 0.015 + uTime * 0.18 + curl * 1.5) * swirl * 0.4,
+                    cos(samplePos.x * 0.015 + uTime * 0.12) * 1.5,
+                    sin(samplePos.x * 0.015 + uTime * 0.15 + curl * 1.5) * swirl * 0.4
+                );
+                displaced.y = max(1.0, displaced.y);
+
+                float temp = sampleTemp(displaced);
+                float density = sampleDensity(displaced, temp);
+
+                if (density > 0.001) {
+                    float normT = clamp((temp - 10.0) / 30.0, 0.0, 1.0);
+                    vec3 heatColor = turboColor(normT);
+
+                    // Beer-Lambert volumetric accumulation mềm mại, không bao giờ tạo cảm giác đĩa cứng
+                    float absorption = density * stepSize;
+                    float alpha = 1.0 - exp(-absorption * 1.6);
+                    accColor += transmittance * alpha * heatColor;
+                    transmittance *= exp(-absorption * 1.3);
+                }
+
+                if (transmittance < 0.04) break;
+            }
+
+            float finalAlpha = clamp((1.0 - transmittance) * 0.70, 0.0, 0.75);
+            gl_FragColor = vec4(accColor, finalAlpha);
+        }
+    `;
+
+    // State for shader uniforms
+    let thermalShaderMesh = null;
+    let thermalShaderMat = null;
+    let thermalUniforms = null;
+
+    function initThermalTextures() {
+        // No canvas textures needed – all GPU shader
+    }
+
+    function buildThermalPlanes(roomW, roomH, racks3D) {
+        currentRoomW = roomW;
+        currentRoomH = roomH;
+        currentRacks3D = racks3D || [];
+
+        // Dispose old children
+        while (thermalGroup.children.length > 0) {
+            const child = thermalGroup.children[0];
+            if (child.geometry) child.geometry.dispose();
+            if (child.material) {
+                if (Array.isArray(child.material)) child.material.forEach(m => m.dispose());
+                else child.material.dispose();
+            }
+            thermalGroup.remove(child);
+        }
+
+        const wallH = WALL_HEIGHT; // Đồng bộ chính xác với chiều cao tường mới (202.5)
+        const boxHalfW = roomW * 0.485;
+        const boxHalfH = roomH * 0.485;
+
+        // Khởi tạo các mảng uniforms cho tối đa 32 thiết bị (Racks + Assets) phát nhiệt hình cầu
+        const maxDevices = 32;
+        const floorCenters = [];
+        const floorTemps = [];
+        const floorRadii = [];
+        const volumeCenters = [];
+        const volumeTemps = [];
+        const volumeRadii = [];
+
+        for (let i = 0; i < maxDevices; i++) {
+            floorCenters.push(new THREE.Vector3(0, 0, 0));
+            floorTemps.push(25.0);
+            floorRadii.push(65.0);
+
+            volumeCenters.push(new THREE.Vector3(0, 0, 0));
+            volumeTemps.push(25.0);
+            volumeRadii.push(65.0);
+        }
+
+        // 1. Tạo mặt phẳng sàn nhiệt độ lan tỏa hình cầu sắc nét ngay trên bề mặt sàn
+        thermalFloorUniforms = {
+            uDeviceCount:   { value: 0 },
+            uDeviceCenter:  { value: floorCenters },
+            uDeviceTemp:    { value: floorTemps },
+            uDeviceRadius:  { value: floorRadii },
+            uFloorOpacity:  { value: THERMAL_LEVELS[thermalIntensityLevel].floorOpacity },
+        };
+
+        thermalFloorMat = new THREE.ShaderMaterial({
+            vertexShader:   THERMAL_FLOOR_VERT_SHADER,
+            fragmentShader: THERMAL_FLOOR_FRAG_SHADER,
+            uniforms:       thermalFloorUniforms,
+            transparent:    true,
+            depthWrite:     false,
+            side:           THREE.DoubleSide,
+            polygonOffset:  true,
+            polygonOffsetFactor: -1.0,
+            polygonOffsetUnits: -4.0,
+        });
+
+        const floorPlaneGeo = new THREE.PlaneGeometry(roomW * 0.98, roomH * 0.98);
+        thermalFloorMesh = new THREE.Mesh(floorPlaneGeo, thermalFloorMat);
+        thermalFloorMesh.rotation.x = -Math.PI / 2;
+        thermalFloorMesh.position.set(0, 0.20, 0); // Ngay trên mặt sàn slabMesh (y=0)
+        thermalFloorMesh.renderOrder = 1;
+        thermalGroup.add(thermalFloorMesh);
+
+        // 2. Tạo khối sương mù thể tích 3D hình cầu bao phủ không gian phòng máy
+        thermalUniforms = {
+            uTime:            { value: 0.0 },
+            uBoxMin:          { value: new THREE.Vector3(-boxHalfW, 0.25, -boxHalfH) },
+            uBoxMax:          { value: new THREE.Vector3( boxHalfW, wallH + 0.25, boxHalfH) },
+            uCamPos:          { value: new THREE.Vector3(0, 200, 400) },
+            uVolumeIntensity: { value: THERMAL_LEVELS[thermalIntensityLevel].volumeIntensity },
+            uDeviceCount:     { value: 0 },
+            uDeviceCenter:    { value: volumeCenters },
+            uDeviceTemp:      { value: volumeTemps },
+            uDeviceRadius:    { value: volumeRadii },
+        };
+
+        thermalShaderMat = new THREE.ShaderMaterial({
+            vertexShader:   THERMAL_VERT_SHADER,
+            fragmentShader: THERMAL_FRAG_SHADER,
+            uniforms:       thermalUniforms,
+            transparent:    true,
+            depthWrite:     false,
+            side:           THREE.BackSide,   // render inside of box (camera is inside)
+            blending:       THREE.NormalBlending,
+            polygonOffset:  true,
+            polygonOffsetFactor: -1.0,
+            polygonOffsetUnits: -4.0,
+        });
+
+        const boxGeo = new THREE.BoxGeometry(
+            roomW * 0.97,
+            wallH,
+            roomH * 0.97,
+            1, 1, 1
+        );
+
+        thermalShaderMesh = new THREE.Mesh(boxGeo, thermalShaderMat);
+        thermalShaderMesh.position.set(0, wallH / 2 + 0.25, 0); // Đáy khối nhiệt độ ở y = 0.25 chống Z-fighting với mặt sàn
+        thermalShaderMesh.renderOrder = 3;
+        thermalGroup.add(thermalShaderMesh);
+
+        renderThermalCanvas();
+
+        thermalGroup.visible = isThermalEnabled;
+    }
+
+    // ===== HOTSPOT & CONVECTIVE PLUME TEXTURE GENERATORS =====
+    let hotspotTexture = null;
+    function getHotspotTexture() {
+        if (hotspotTexture) return hotspotTexture;
+        const c = document.createElement('canvas');
+        c.width = 128;
+        c.height = 128;
+        const ctx = c.getContext('2d');
+        const grad = ctx.createRadialGradient(64, 64, 4, 64, 64, 62);
+        grad.addColorStop(0.0, 'rgba(239, 68, 68, 0.95)');   // Tâm đỏ rực
+        grad.addColorStop(0.35, 'rgba(249, 115, 22, 0.70)');  // Cam nhiệt
+        grad.addColorStop(0.70, 'rgba(234, 179, 8, 0.30)');   // Vàng lan tỏa
+        grad.addColorStop(1.0, 'rgba(239, 68, 68, 0.00)');   // Mờ dần về 0
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, 128, 128);
+        hotspotTexture = new THREE.CanvasTexture(c);
+        return hotspotTexture;
+    }
+
+    let plumeTexture = null;
+    function getPlumeTexture() {
+        if (plumeTexture) return plumeTexture;
+        const c = document.createElement('canvas');
+        c.width = 64;
+        c.height = 128;
+        const ctx = c.getContext('2d');
+        const grad = ctx.createLinearGradient(0, 128, 0, 0);
+        grad.addColorStop(0.0, 'rgba(239, 68, 68, 0.85)');  // Gốc đỏ rực
+        grad.addColorStop(0.5, 'rgba(249, 115, 22, 0.55)');  // Thân cam lửa
+        grad.addColorStop(1.0, 'rgba(234, 179, 8, 0.00)');   // Đỉnh tiêu tán
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, 64, 128);
+        plumeTexture = new THREE.CanvasTexture(c);
+        return plumeTexture;
+    }
+
+    // ===== UPDATE VISUALS (LABELS, LED, GLOW, FLOOR HOTSPOTS) FOR ALL 3D DEVICES =====
+    function createFloorHotspot(x, z, radius, isCrit) {
+        const geo = new THREE.PlaneGeometry(radius * 2, radius * 2);
+        const mat = new THREE.MeshBasicMaterial({
+            map: getHotspotTexture(),
+            transparent: true,
+            opacity: isCrit ? 0.88 : 0.48,
+            depthWrite: false,
+            blending: THREE.AdditiveBlending
+        });
+        const mesh = new THREE.Mesh(geo, mat);
+        mesh.rotation.x = -Math.PI / 2;
+        mesh.position.set(x, 0.22, z);
+        mesh.renderOrder = 2;
+        hotspotGroup.add(mesh);
+    }
+
+    function updateDevicesVisualsWithTemp() {
+        // 1. Dọn dẹp các quầng nhiệt điểm nóng cũ
+        while (hotspotGroup.children.length > 0) {
+            const child = hotspotGroup.children[0];
+            if (child.geometry) child.geometry.dispose();
+            if (child.material) {
+                if (Array.isArray(child.material)) child.material.forEach(m => m.dispose());
+                else child.material.dispose();
+            }
+            hotspotGroup.remove(child);
+        }
+        criticalPulsingItems.length = 0;
+
+        // 2. Duyệt qua tất cả các thiết bị 3D đã đăng ký trong phòng (cả sàn và gắn tường)
+        registered3DDevices.forEach((reg, key) => {
+            const tData = deviceTempMap.get(key) || (reg.type === 'rack' ? rackTempMap.get(reg.id) : null);
+            const curT = tData ? Number(tData.current_temp || tData.temp) : 25.0;
+            const status = tData ? (tData.temp_status || tData.status || getThermalStatus(curT).status) : getThermalStatus(curT).status;
+
+            // Cập nhật nhãn Sprite 3D hiển thị nhiệt độ thực
+            updateDeviceSpriteLabel(reg.sprite, curT, status, reg.name);
+
+            // Quầng nhiệt điểm nóng rực rỡ trên sàn phòng cho thiết bị báo động quá nhiệt hoặc ấm
+            if (status === 'critical' || status === 'warning') {
+                let hx = reg.x;
+                let hz = reg.z;
+                if (reg.isWallMounted) {
+                    const faceSign = (reg.wallFace === 'back') ? -1.0 : 1.0;
+                    const wallRot = reg.wallRotation || 0;
+                    hx += -Math.sin(wallRot) * faceSign * 20.0;
+                    hz += Math.cos(wallRot) * faceSign * 20.0;
+                }
+                createFloorHotspot(hx, hz, reg.isWallMounted ? 68 : 80, status === 'critical');
+            }
+
+            if (status === 'critical') {
+                // ===== A. THIẾT BỊ BÁO ĐỎ (QUÁ NHIỆT) =====
+                // 1. Đèn LED trên tủ/thiết bị chuyển sang MÀU ĐỎ RỰC và thêm vào danh sách nhấp nháy
+                if (reg.ledMesh && reg.ledMesh.material) {
+                    reg.ledMesh.material.color.setHex(0xef4444);
+                    criticalPulsingItems.push(reg.ledMesh);
+                }
+
+                // 2. Thân vỏ thiết bị phát hào quang đỏ (Emissive Glow)
+                if (reg.mesh && reg.mesh.material && reg.mesh.material.emissive) {
+                    reg.mesh.material.emissive = new THREE.Color(0xef4444);
+                    reg.mesh.material.emissiveIntensity = 0.35;
+                    criticalPulsingItems.push(reg.mesh);
+                }
+
+            } else if (status === 'warning') {
+                // ===== B. THIẾT BỊ BÁO VÀNG CAM (ẤM) =====
+                if (reg.ledMesh && reg.ledMesh.material) {
+                    reg.ledMesh.material.color.setHex(0xf59e0b);
+                }
+                if (reg.mesh && reg.mesh.material && reg.mesh.material.emissive) {
+                    reg.mesh.material.emissive = new THREE.Color(0xd97706);
+                    reg.mesh.material.emissiveIntensity = 0.15;
+                }
+
+            } else {
+                // ===== C. BÌNH THƯỜNG / MÁT =====
+                if (reg.ledMesh && reg.ledMesh.material) {
+                    reg.ledMesh.material.color.setHex(status === 'cool' ? 0x0ea5e9 : 0x10b981);
+                }
+                if (reg.mesh && reg.mesh.material && reg.mesh.material.emissive) {
+                    reg.mesh.material.emissive = new THREE.Color(0x000000);
+                    reg.mesh.material.emissiveIntensity = 0.0;
+                }
+            }
+        });
+    }
+
+    function renderThermalCanvas() {
+        // Cập nhật shader uniforms từ tất cả thiết bị (Racks + Assets) phát nhiệt hình cầu từ tâm
+        if (!thermalUniforms || !thermalUniforms.uDeviceCenter) return;
+
+        let srcIdx = 0;
+        registered3DDevices.forEach((reg, key) => {
+            if (srcIdx >= 32) return;
+            const tData = deviceTempMap.get(key) || (reg.type === 'rack' ? rackTempMap.get(reg.id) : null);
+            const curT = tData ? Number(tData.current_temp || tData.temp) : (reg.type === 'rack' ? 26.0 : 25.0);
+
+            // Tâm 3D chính xác của thiết bị: (reg.x, centerY, reg.z)
+            const centerY = (reg.centerY !== undefined) ? reg.centerY : ((reg.baseHeight || (reg.type === 'rack' ? RACK_HEIGHT : 45)) * 0.5);
+
+            // Bán kính khối cầu nhiệt độ lan tỏa theo kích thước thiết bị
+            let radius = Math.max(50, Math.min(Math.max(reg.w || 60, reg.h || 60) * 0.70, 85));
+            if (reg.isWallMounted) {
+                // Thiết bị gắn tường tỏa nhiệt xuống sàn và lan tỏa vào phòng rộng rãi hơn
+                radius = Math.max(radius, 75);
+            }
+
+            thermalUniforms.uDeviceCenter.value[srcIdx].set(reg.x, centerY, reg.z);
+            thermalUniforms.uDeviceTemp.value[srcIdx] = curT;
+            thermalUniforms.uDeviceRadius.value[srcIdx] = radius;
+
+            // Đồng bộ hoá mặt phẳng sàn nhiệt độ (Thermal Floor Heatmap)
+            if (thermalFloorUniforms && thermalFloorUniforms.uDeviceCenter) {
+                let floorX = reg.x;
+                let floorZ = reg.z;
+                if (reg.isWallMounted) {
+                    // Chiếu điểm tâm nhiệt xuống sàn hơi chếch nhẹ ra phía trước mặt tường để vệt nhiệt tỏa rõ nét trên sàn phòng
+                    const faceSign = (reg.wallFace === 'back') ? -1.0 : 1.0;
+                    const wallRot = reg.wallRotation || 0;
+                    const normX = -Math.sin(wallRot) * faceSign;
+                    const normZ = Math.cos(wallRot) * faceSign;
+                    floorX += normX * 20.0;
+                    floorZ += normZ * 20.0;
+                }
+                thermalFloorUniforms.uDeviceCenter.value[srcIdx].set(floorX, 0, floorZ);
+                thermalFloorUniforms.uDeviceTemp.value[srcIdx] = curT;
+                thermalFloorUniforms.uDeviceRadius.value[srcIdx] = radius;
+            }
+
+            srcIdx++;
+        });
+
+        thermalUniforms.uDeviceCount.value = srcIdx;
+        if (thermalFloorUniforms) {
+            thermalFloorUniforms.uDeviceCount.value = srcIdx;
+        }
+
+        if (thermalFloorMat) thermalFloorMat.uniformsNeedUpdate = true;
+        if (thermalShaderMat) thermalShaderMat.uniformsNeedUpdate = true;
+    }
+
+    async function fetchThermalData() {
+        try {
+            const res = await fetch(`/api/plugins/rack-layout/temperature/${LOCATION_ID}/`);
+            if (!res.ok) return;
+            const data = await res.json();
+            const racks = data.racks || [];
+            const assets = data.assets || [];
+
+            let total = 0, count = 0;
+            let minT = Infinity, maxT = -Infinity;
+            let criticalCount = 0;
+
+            // 1. Nạp toàn bộ dữ liệu Racks
+            racks.forEach(r => {
+                const curT = Number(r.current_temp);
+                if (!isNaN(curT)) {
+                    const info = {
+                        object_type: 'rack',
+                        id: r.id,
+                        temp: curT,
+                        current_temp: curT,
+                        min_temp: r.min_temp,
+                        max_temp: r.max_temp,
+                        status: r.temp_status || 'normal',
+                        temp_status: r.temp_status || 'normal',
+                        name: r.name
+                    };
+                    rackTempMap.set(r.id, info);
+                    deviceTempMap.set(`rack_${r.id}`, info);
+                    total += curT;
+                    count++;
+                    if (curT < minT) minT = curT;
+                    if (curT > maxT) maxT = curT;
+                    if (info.temp_status === 'critical' || curT > 32.0) criticalCount++;
+                }
+            });
+
+            // 2. Nạp toàn bộ dữ liệu Assets / Devices
+            assets.forEach(a => {
+                const curT = Number(a.current_temp);
+                if (!isNaN(curT)) {
+                    const info = {
+                        object_type: 'asset',
+                        id: a.id,
+                        temp: curT,
+                        current_temp: curT,
+                        min_temp: a.min_temp,
+                        max_temp: a.max_temp,
+                        status: a.temp_status || 'normal',
+                        temp_status: a.temp_status || 'normal',
+                        name: a.name || `Asset #${a.id}`
+                    };
+                    deviceTempMap.set(`asset_${a.id}`, info);
+                    total += curT;
+                    count++;
+                    if (curT < minT) minT = curT;
+                    if (curT > maxT) maxT = curT;
+                    if (info.temp_status === 'critical' || curT > 32.0) criticalCount++;
+                }
+            });
+
+            // Cập nhật thẻ chú giải nhiệt độ thời gian thực
+            if (count > 0 && statTempAvgEl) {
+                const avgT = (total / count).toFixed(1);
+                statTempAvgEl.textContent = `${avgT}°C`;
+                statTempMinEl.textContent = `${minT.toFixed(1)}°C`;
+                statTempMaxEl.textContent = `${maxT.toFixed(1)}°C`;
+            }
+
+            // Cập nhật trạng thái trực quan 3D (Đèn LED đỏ, Quầng nhiệt sàn, Nhãn chữ đỏ)
+            updateDevicesVisualsWithTemp();
+
+            // Cập nhật trường nhiệt độ GPU Shader
+            renderThermalCanvas();
+
+        } catch (e) {
+            console.warn('Thermal data polling error:', e);
+        }
+    }
+
+    function startThermalPolling() {
+        if (thermalInterval) clearInterval(thermalInterval);
+        fetchThermalData();
+        thermalInterval = setInterval(fetchThermalData, 5000);
+    }
+
+    function stopThermalPolling() {
+        if (thermalInterval) {
+            clearInterval(thermalInterval);
+            thermalInterval = null;
+        }
+    }
+
+    // ===== 3D ROOM VOLUME SMOKE SIMULATION ENGINE =====
+    // Khói di chuyển từ devices ra ngoài, uốn lượn tự nhiên theo nhiệt độ, tới tường thì dừng lại
+    let softSmokeTexture = null;
+    function getSoftSmokeTexture() {
+        if (softSmokeTexture) return softSmokeTexture;
+        const c = document.createElement('canvas');
+        c.width = 128;
+        c.height = 128;
+        const ctx = c.getContext('2d');
+        const grad = ctx.createRadialGradient(64, 64, 3, 64, 64, 62);
+        grad.addColorStop(0.0, 'rgba(255, 255, 255, 1.0)');
+        grad.addColorStop(0.20, 'rgba(255, 255, 255, 0.90)');
+        grad.addColorStop(0.42, 'rgba(255, 255, 255, 0.55)');
+        grad.addColorStop(0.70, 'rgba(255, 255, 255, 0.18)');
+        grad.addColorStop(0.90, 'rgba(255, 255, 255, 0.04)');
+        grad.addColorStop(1.0, 'rgba(255, 255, 255, 0.0)');
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, 128, 128);
+        softSmokeTexture = new THREE.CanvasTexture(c);
+        return softSmokeTexture;
+    }
+
+    function checkWallCollision(px, pz, boundary, wallBoxes) {
+        if (!boundary) return false;
+        // 1. Kiểm tra va chạm biên bao ngoài của khối căn phòng
+        if (px <= boundary.minX || px >= boundary.maxX || pz <= boundary.minZ || pz >= boundary.maxZ) {
+            return true;
+        }
+        // 2. Kiểm tra va chạm các bức tường kiến trúc bên trong phòng
+        if (wallBoxes && wallBoxes.length > 0) {
+            for (let i = 0; i < wallBoxes.length; i++) {
+                const wb = wallBoxes[i];
+                const dx = px - wb.x;
+                const dz = pz - wb.z;
+                // Chuyển sang hệ tọa độ cục bộ của tường có xoay góc (rotation)
+                const lx = dx * wb.cos + dz * wb.sin;
+                const lz = -dx * wb.sin + dz * wb.cos;
+                if (Math.abs(lx) <= (wb.halfLen + 5) && Math.abs(lz) <= (wb.halfThick + 5)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    let smokeLinesMesh = null;
+    let smokePointsGeo = null;
+    let smokeLinesGeo = null;
+    const TOTAL_SMOKE_PARTICLES = 950;
+
+    function resetSmokeParticle(p, devList) {
+        if (!devList || devList.length === 0) {
+            // Trường hợp phòng trống chưa có thiết bị, phát từ trung tâm
+            p.x = (Math.random() - 0.5) * 40;
+            p.y = 10 + Math.random() * 20;
+            p.z = (Math.random() - 0.5) * 40;
+            const ang = Math.random() * Math.PI * 2;
+            p.dirX = Math.cos(ang);
+            p.dirZ = Math.sin(ang);
+            p.speed = 26 + Math.random() * 18;
+            p.age = 0;
+            p.maxLife = 4.2 + Math.random() * 2.5;
+            p.isStopped = false;
+            p.stoppedTimer = 0;
+            p.alpha = 0.0;
+            p.prevX = p.x;
+            p.prevY = p.y;
+            p.prevZ = p.z;
+            return;
+        }
+
+        const dev = p.dev || devList[Math.floor(Math.random() * devList.length)];
+        p.dev = dev;
+        p.devKey = `${dev.type}_${dev.id}`;
+
+        if (dev.isWallMounted) {
+            // Thiết bị gắn trên tường: khói tỏa từ mặt trước thiết bị ra phía lòng phòng
+            const wallRot = dev.wallRotation || 0;
+            const faceSign = (dev.wallFace === 'back') ? -1.0 : 1.0;
+            const normX = -Math.sin(wallRot) * faceSign;
+            const normZ = Math.cos(wallRot) * faceSign;
+            const tangX = Math.cos(wallRot);
+            const tangZ = Math.sin(wallRot);
+
+            p.x = dev.x + normX * 18.0 + tangX * (Math.random() - 0.5) * ((dev.w || 40) * 0.6);
+            p.z = dev.z + normZ * 18.0 + tangZ * (Math.random() - 0.5) * ((dev.w || 40) * 0.6);
+            p.y = (dev.centerY || dev.y || 80) + (Math.random() - 0.5) * ((dev.h || 40) * 0.35);
+
+            const spread = (Math.random() - 0.5) * 0.6;
+            p.dirX = normX + tangX * spread;
+            p.dirZ = normZ + tangZ * spread;
+            const len = Math.sqrt(p.dirX * p.dirX + p.dirZ * p.dirZ) || 1.0;
+            p.dirX /= len;
+            p.dirZ /= len;
+            p.speed = 26 + Math.random() * 22;
+            p.spawnImmunity = 0.8;
+        } else {
+            const rot = dev.rot || 0;
+            const depth = dev.h || 60;
+            const width = dev.w || 60;
+            const bHeight = dev.baseHeight || 100;
+            const streamK = p.streamIndex % 6;
+
+            // Lan tỏa hình cầu từ tâm thiết bị (dev.x, centerY, dev.z) ra bên ngoài theo mọi hướng
+            const centerY = bHeight * 0.5;
+            const ang = rot + (streamK / 6.0) * Math.PI * 2 + (Math.random() - 0.5) * 0.35;
+            p.dirX = Math.cos(ang);
+            p.dirZ = Math.sin(ang);
+            p.x = dev.x + p.dirX * (width * 0.46);
+            p.z = dev.z + p.dirZ * (depth * 0.46);
+            p.y = centerY + (Math.random() - 0.5) * (bHeight * 0.35);
+            p.speed = 28 + Math.random() * 24;
+            p.spawnImmunity = 0;
+        }
+
+        p.prevX = p.x;
+        p.prevY = p.y;
+        p.prevZ = p.z;
+        p.speed = 28 + Math.random() * 24;
+        p.wobbleFreq = 1.6 + Math.random() * 1.8;
+        p.wobblePhase = Math.random() * Math.PI * 2;
+        p.age = 0;
+        p.maxLife = 4.0 + Math.random() * 2.8;
+        p.isStopped = false;
+        p.stoppedTimer = 0;
+        p.alpha = 0.08;
+    }
+
+    function buildRoomSmokeSystem(roomW, roomH, boundary, wallBoxes) {
+        roomCollisionBoundary = boundary;
+        roomCollisionBoxes = wallBoxes || [];
+
+        // Dọn dẹp hệ thống khói cũ
+        while (smokeGroup.children.length > 0) {
+            const child = smokeGroup.children[0];
+            if (child.geometry) child.geometry.dispose();
+            if (child.material) child.material.dispose();
+            smokeGroup.remove(child);
+        }
+        smokeParticlesData = [];
+
+        const devList = Array.from(registered3DDevices.values());
+
+        const positions = new Float32Array(TOTAL_SMOKE_PARTICLES * 3);
+        const colors = new Float32Array(TOTAL_SMOKE_PARTICLES * 3);
+
+        // Buffer cho các đường sợi khói (line segments) kết nối vết chuyển động
+        const linePositions = new Float32Array(TOTAL_SMOKE_PARTICLES * 6);
+        const lineColors = new Float32Array(TOTAL_SMOKE_PARTICLES * 6);
+
+        for (let i = 0; i < TOTAL_SMOKE_PARTICLES; i++) {
+            const dev = (devList.length > 0) ? devList[i % devList.length] : null;
+            const p = {
+                id: i,
+                streamIndex: i % 6,
+                dev: dev,
+                devKey: dev ? `${dev.type}_${dev.id}` : null,
+                x: 0, y: 0, z: 0,
+                prevX: 0, prevY: 0, prevZ: 0,
+                dirX: 0, dirZ: 0,
+                speed: 32,
+                wobbleFreq: 2.0,
+                wobblePhase: 0,
+                age: 0,
+                maxLife: 5.0,
+                isStopped: false,
+                stoppedTimer: 0,
+                alpha: 0
+            };
+
+            resetSmokeParticle(p, devList);
+            // Phân bổ thời gian ban đầu để khói trải đều khắp không gian ngay khi mở phòng
+            p.age = Math.random() * p.maxLife * 0.85;
+
+            smokeParticlesData.push(p);
+
+            positions[i * 3 + 0] = p.x;
+            positions[i * 3 + 1] = p.y;
+            positions[i * 3 + 2] = p.z;
+            colors[i * 3 + 0] = 0.2;
+            colors[i * 3 + 1] = 0.7;
+            colors[i * 3 + 2] = 0.9;
+        }
+
+        // 1. Tạo Mesh Points cho các cụm khói thể tích (Volumetric Smoke Puffs)
+        smokePointsGeo = new THREE.BufferGeometry();
+        smokePointsGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        smokePointsGeo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
+        const smokePointsMat = new THREE.PointsMaterial({
+            size: 36,
+            map: getSoftSmokeTexture(),
+            vertexColors: true,
+            transparent: true,
+            opacity: 0.92,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false
+        });
+
+        smokePointsMesh = new THREE.Points(smokePointsGeo, smokePointsMat);
+        smokePointsMesh.renderOrder = 5;
+        smokeGroup.add(smokePointsMesh);
+
+        // 2. Tạo Mesh LineSegments cho các sợi đường khói chuyển động uốn lượn (Moving Smoke Streamlines)
+        smokeLinesGeo = new THREE.BufferGeometry();
+        smokeLinesGeo.setAttribute('position', new THREE.BufferAttribute(linePositions, 3));
+        smokeLinesGeo.setAttribute('color', new THREE.BufferAttribute(lineColors, 3));
+
+        const smokeLinesMat = new THREE.LineBasicMaterial({
+            vertexColors: true,
+            transparent: true,
+            opacity: 0.88,
+            linewidth: 3.5,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false
+        });
+
+        smokeLinesMesh = new THREE.LineSegments(smokeLinesGeo, smokeLinesMat);
+        smokeLinesMesh.renderOrder = 5;
+        smokeGroup.add(smokeLinesMesh);
+
+        smokeGroup.visible = isThermalEnabled;
+    }
+
+    function updateSmokeParticles(dt) {
+        if (!smokeParticlesData || smokeParticlesData.length === 0 || !smokePointsGeo || !smokeLinesGeo) return;
+
+        const devList = Array.from(registered3DDevices.values());
+        const ptPos = smokePointsGeo.attributes.position.array;
+        const ptCol = smokePointsGeo.attributes.color.array;
+        const lnPos = smokeLinesGeo.attributes.position.array;
+        const lnCol = smokeLinesGeo.attributes.color.array;
+
+        // Giới hạn dt hợp lý tránh giật bước nhảy khi tab bị ẩn
+        const clampedDt = Math.min(dt, 0.06);
+
+        for (let i = 0; i < smokeParticlesData.length; i++) {
+            const p = smokeParticlesData[i];
+
+            // 1. Lấy nhiệt độ thực của thiết bị nguồn để đổi màu khói
+            const tInfo = deviceTempMap.get(p.devKey) || (p.dev && p.dev.type === 'rack' ? rackTempMap.get(p.dev.id) : null);
+            const curT = tInfo ? Number(tInfo.current_temp || tInfo.temp) : 25.0;
+            const status = tInfo ? (tInfo.temp_status || tInfo.status) : 'normal';
+
+            // Xác định màu khói theo nhiệt độ (rực rỡ, rõ ràng, tương phản cao):
+            let r = 0.08, g = 0.94, b = 0.50; // Mặc định: Xanh ngọc lục bảo tươi sáng
+            if (status === 'critical' || curT > 32.0) {
+                // Khói ĐỎ RỰC / LỬA CAM cho thiết bị quá nhiệt (>32°C)
+                r = 1.0;
+                g = 0.12 + 0.14 * Math.sin(p.age * 4.0 + i);
+                b = 0.10;
+            } else if (status === 'warning' || curT >= 27.0) {
+                // Khói VÀNG CAM HỔ PHÁCH cho thiết bị ấm (27-32°C)
+                r = 1.0;
+                g = 0.72;
+                b = 0.04;
+            } else if (status === 'cool' || curT <= 21.0) {
+                // Khói XANH LƠ BĂNG GIÁ cho thiết bị mát (<21°C)
+                r = 0.02;
+                g = 0.86;
+                b = 1.0;
+            } else {
+                // Nhiệt độ phòng tiêu chuẩn (21-27°C): Xanh ngọc lục bảo
+                r = 0.08;
+                g = 0.95;
+                b = 0.50;
+            }
+
+            // 2. Cập nhật chuyển động khói
+            if (p.isStopped) {
+                // ĐÃ TỚI TƯỜNG THÌ DỪNG LẠI: Không di chuyển thêm theo x, z, khói tích tụ tại mép tường và tan biến dần
+                p.stoppedTimer += clampedDt;
+                p.alpha = Math.max(0, p.alpha - clampedDt * 1.8);
+                // Khói trôi nhẹ lên trần khi đập vào tường
+                p.y += 2.0 * clampedDt;
+
+                if (p.alpha <= 0.01 || p.stoppedTimer > 1.2 || p.y > (WALL_HEIGHT - 5)) {
+                    resetSmokeParticle(p, devList);
+                }
+            } else {
+                p.age += clampedDt;
+                if (p.age >= p.maxLife) {
+                    resetSmokeParticle(p, devList);
+                    continue;
+                }
+
+                // Chuyển động xoáy lượn sóng mềm mại (Organic Fluid Swirling Wave)
+                const wobbleX = Math.sin(p.age * p.wobbleFreq + p.wobblePhase) * 14.0;
+                const wobbleZ = Math.cos(p.age * (p.wobbleFreq * 0.95) + p.wobblePhase) * 14.0;
+
+                const vx = p.dirX * p.speed + wobbleX;
+                const vz = p.dirZ * p.speed + wobbleZ;
+                // Khí nóng bốc lên nhẹ theo độ cao (thermal buoyancy)
+                const vy = 5.5 + Math.sin(p.age * 2.2) * 2.0;
+
+                const nextX = p.x + vx * clampedDt;
+                const nextY = Math.min(WALL_HEIGHT - 10, p.y + vy * clampedDt);
+                const nextZ = p.z + vz * clampedDt;
+
+                // KIỂM TRA VA CHẠM: TỚI TƯỜNG (BIÊN PHÒNG HOẶC TƯỜNG NGĂN) THÌ DỪNG LẠI!
+                const canCollide = p.age > (p.spawnImmunity || 0);
+                if (canCollide && checkWallCollision(nextX, nextZ, roomCollisionBoundary, roomCollisionBoxes)) {
+                    p.isStopped = true;
+                    p.stoppedTimer = 0;
+                    // Giữ nguyên vị trí mép tường vừa chạm tới
+                } else {
+                    p.prevX = p.x;
+                    p.prevY = p.y;
+                    p.prevZ = p.z;
+                    p.x = nextX;
+                    p.y = nextY;
+                    p.z = nextZ;
+
+                    // Độ mờ alpha mượt mà: Hiện dần từ device, rõ nét khi bay trong phòng, mờ dần cuối dòng
+                    const lifeRatio = p.age / p.maxLife;
+                    if (lifeRatio < 0.15) {
+                        p.alpha = lifeRatio / 0.15;
+                    } else if (lifeRatio > 0.82) {
+                        p.alpha = (1.0 - lifeRatio) / 0.18;
+                    } else {
+                        p.alpha = 1.0;
+                    }
+                }
+            }
+
+            // 3. Ghi dữ liệu vào Buffer Điểm Khói (Smoke Puff Point)
+            const idx3 = i * 3;
+            ptPos[idx3 + 0] = p.x;
+            ptPos[idx3 + 1] = p.y;
+            ptPos[idx3 + 2] = p.z;
+
+            const effectiveAlpha = p.alpha;
+            ptCol[idx3 + 0] = r * effectiveAlpha;
+            ptCol[idx3 + 1] = g * effectiveAlpha;
+            ptCol[idx3 + 2] = b * effectiveAlpha;
+
+            // 4. Ghi dữ liệu vào Buffer Sợi Đường Khói (Smoke Streamline Segment)
+            const idx6 = i * 6;
+            // Đuôi sợi khói (vị trí trước)
+            lnPos[idx6 + 0] = p.prevX;
+            lnPos[idx6 + 1] = p.prevY;
+            lnPos[idx6 + 2] = p.prevZ;
+            lnCol[idx6 + 0] = r * (effectiveAlpha * 0.45);
+            lnCol[idx6 + 1] = g * (effectiveAlpha * 0.45);
+            lnCol[idx6 + 2] = b * (effectiveAlpha * 0.45);
+
+            // Đầu sợi khói (vị trí hiện tại)
+            lnPos[idx6 + 3] = p.x;
+            lnPos[idx6 + 4] = p.y;
+            lnPos[idx6 + 5] = p.z;
+            lnCol[idx6 + 3] = r * (effectiveAlpha * 1.0);
+            lnCol[idx6 + 4] = g * (effectiveAlpha * 1.0);
+            lnCol[idx6 + 5] = b * (effectiveAlpha * 1.0);
+        }
+
+        smokePointsGeo.attributes.position.needsUpdate = true;
+        smokePointsGeo.attributes.color.needsUpdate = true;
+        smokeLinesGeo.attributes.position.needsUpdate = true;
+        smokeLinesGeo.attributes.color.needsUpdate = true;
+    }
+
+    // ===== DIORAMA FLOOR SLAB =====
+    function buildDioramaBase(w, h, cx, cz) {
+        const slabThickness = 20;
+
+        const floorGeo = new THREE.BoxGeometry(w, slabThickness, h);
+        const topMat = new THREE.MeshStandardMaterial({
+            color: currentTheme.floorTop,
+            roughness: 0.55,
+            metalness: 0.1
+        });
+        const sideMat = new THREE.MeshStandardMaterial({
+            color: currentTheme.floorSide,
+            roughness: 0.8,
+            metalness: 0.05
+        });
+
+        const slabMaterials = [
+            sideMat, sideMat,
+            topMat,
+            sideMat,
+            sideMat, sideMat
+        ];
+
+        const slabMesh = new THREE.Mesh(floorGeo, slabMaterials);
+        slabMesh.position.set(0, -slabThickness / 2, 0);
+        slabMesh.receiveShadow = true;
+        slabMesh.renderOrder = 0;
+        floorGroup.add(slabMesh);
+
+        // Raised floor grid
+        const gridStep = 30;
+        const gridHelper = new THREE.GridHelper(Math.max(w, h), Math.round(Math.max(w, h) / gridStep), currentTheme.floorGrid, currentTheme.floorGrid);
+        gridHelper.position.set(0, 0.15, 0);
+        gridHelper.material.opacity = 0.5;
+        gridHelper.material.transparent = true;
+        gridHelper.renderOrder = 1;
+        floorGroup.add(gridHelper);
+
+        // Soft base drop shadow plane
+        const shadowPlaneGeo = new THREE.PlaneGeometry(w * 1.3, h * 1.3);
+        const shadowMat = new THREE.ShadowMaterial({ opacity: 0.25 });
+        const shadowMesh = new THREE.Mesh(shadowPlaneGeo, shadowMat);
+        shadowMesh.rotation.x = -Math.PI / 2;
+        shadowMesh.position.y = -slabThickness - 1;
+        shadowMesh.receiveShadow = true;
+        floorGroup.add(shadowMesh);
+    }
+
+    // ===== 3D SOLID WALL BUILDER (Mặt bằng location chung, đục xuyên tường cho cửa) =====
+    function createSolidWall3D(wallObj, roomCenterX, roomCenterZ, wallChildren = [], wallOpenings = []) {
+        const isV = (wallObj.height && wallObj.width && wallObj.height > wallObj.width);
+        const wallLength = isV ? Math.max(wallObj.height || 60, 20) : Math.max(wallObj.width || 60, 20);
+        const wallThickness = 20;
+        const rotDeg = wallObj.rotation || 0;
+        const rotRad = (rotDeg * Math.PI) / 180;
+
+        let dirX, dirY, normX, normY;
+        if (isV) {
+            dirX = -Math.sin(rotRad);
+            dirY = Math.cos(rotRad);
+            normX = Math.cos(rotRad);
+            normY = Math.sin(rotRad);
+        } else {
+            dirX = Math.cos(rotRad);
+            dirY = Math.sin(rotRad);
+            normX = -Math.sin(rotRad);
+            normY = Math.cos(rotRad);
+        }
+
+        // Calculate center of wall in 2D
+        const center2dX = wallObj.x + (wallLength / 2) * dirX + (wallThickness / 2) * normX;
+        const center2dY = wallObj.y + (wallLength / 2) * dirY + (wallThickness / 2) * normY;
+
+        const pos3dX = center2dX - roomCenterX;
+        const pos3dZ = center2dY - roomCenterZ;
+
+        const wallGroup = new THREE.Group();
+        wallGroup.position.set(pos3dX, 0, pos3dZ);
+        wallGroup.rotation.y = isV ? (-rotRad - Math.PI / 2) : -rotRad;
+
+        const wallMat = new THREE.MeshStandardMaterial({
+            color: currentTheme.wall,
+            roughness: 0.65,
+            metalness: 0.05
+        });
+        const trimMat = new THREE.MeshStandardMaterial({ color: currentTheme.wallTrim, roughness: 0.5 });
+        const capMat = new THREE.MeshStandardMaterial({ color: currentTheme.wallTop, roughness: 0.5 });
+
+        // 1. NẾU BỨC TƯỜNG KHÔNG CÓ CỬA -> DỰNG NGUYÊN KHỐI ĐẶC
+        if (!wallOpenings || wallOpenings.length === 0) {
+            const wallGeo = new THREE.BoxGeometry(wallLength, WALL_HEIGHT, wallThickness);
+            const wallMesh = new THREE.Mesh(wallGeo, wallMat);
+            wallMesh.position.y = WALL_HEIGHT / 2;
+            wallMesh.castShadow = true;
+            wallMesh.receiveShadow = true;
+            wallGroup.add(wallMesh);
+
+            const trimGeo = new THREE.BoxGeometry(wallLength, 5, wallThickness + 1.8);
+            const trimMesh = new THREE.Mesh(trimGeo, trimMat);
+            trimMesh.position.y = 2.5;
+            wallGroup.add(trimMesh);
+        } else {
+            // 2. NẾU CÓ CỬA CHÍNH HOẶC CỬA SỔ -> ĐỤC XUYÊN TƯỜNG (PHÂN ĐOẠN KHỐI TƯỜNG)
+            let curS = 0;
+            wallOpenings.forEach(op => {
+                // Đoạn tường đặc trước ô cửa
+                if (op.start > curS + 0.5) {
+                    const segLen = op.start - curS;
+                    const segMid = curS + segLen / 2;
+                    const xLoc = segMid - wallLength / 2;
+
+                    const segGeo = new THREE.BoxGeometry(segLen, WALL_HEIGHT, wallThickness);
+                    const segMesh = new THREE.Mesh(segGeo, wallMat);
+                    segMesh.position.set(xLoc, WALL_HEIGHT / 2, 0);
+                    segMesh.castShadow = true;
+                    segMesh.receiveShadow = true;
+                    wallGroup.add(segMesh);
+
+                    const tGeo = new THREE.BoxGeometry(segLen, 5, wallThickness + 1.8);
+                    const tMesh = new THREE.Mesh(tGeo, trimMat);
+                    tMesh.position.set(xLoc, 2.5, 0);
+                    wallGroup.add(tMesh);
+                }
+
+                // Vị trí ô cửa đục xuyên tường
+                const openW = op.width;
+                const xLoc = op.mid - wallLength / 2;
+
+                if (op.type === 'door') {
+                    // CỬA CHÍNH: LỐI ĐI THÔNG SUỐT TỪ SÀN ĐẾN CHIỀU CAO CỬA (DOOR_HEIGHT)
+                    // Lanh-tô tường phía trên cửa
+                    const lintelH = WALL_HEIGHT - DOOR_HEIGHT;
+                    if (lintelH > 0) {
+                        const lintelGeo = new THREE.BoxGeometry(openW, lintelH, wallThickness);
+                        const lintelMesh = new THREE.Mesh(lintelGeo, wallMat);
+                        lintelMesh.position.set(xLoc, DOOR_HEIGHT + lintelH / 2, 0);
+                        lintelMesh.castShadow = true;
+                        lintelMesh.receiveShadow = true;
+                        wallGroup.add(lintelMesh);
+                    }
+
+                    // Khung bao & cánh cửa chính 3D nằm gọn trong ô tường đục xuyên
+                    createDoorInsideCutout3D(op.item, xLoc, openW, wallThickness, wallGroup);
+                } else if (op.type === 'window') {
+                    // CỬA SỔ: Đoạn tường dưới bậu cửa sổ
+                    if (WINDOW_BOTTOM_OFFSET > 0) {
+                        const botGeo = new THREE.BoxGeometry(openW, WINDOW_BOTTOM_OFFSET, wallThickness);
+                        const botMesh = new THREE.Mesh(botGeo, wallMat);
+                        botMesh.position.set(xLoc, WINDOW_BOTTOM_OFFSET / 2, 0);
+                        botMesh.castShadow = true;
+                        botMesh.receiveShadow = true;
+                        wallGroup.add(botMesh);
+
+                        const tGeo = new THREE.BoxGeometry(openW, 5, wallThickness + 1.8);
+                        const tMesh = new THREE.Mesh(tGeo, trimMat);
+                        tMesh.position.set(xLoc, 2.5, 0);
+                        wallGroup.add(tMesh);
+                    }
+
+                    // Lanh-tô tường phía trên cửa sổ
+                    const topWallY = WINDOW_BOTTOM_OFFSET + WINDOW_HEIGHT;
+                    const lintelH = WALL_HEIGHT - topWallY;
+                    if (lintelH > 0) {
+                        const lintelGeo = new THREE.BoxGeometry(openW, lintelH, wallThickness);
+                        const lintelMesh = new THREE.Mesh(lintelGeo, wallMat);
+                        lintelMesh.position.set(xLoc, topWallY + lintelH / 2, 0);
+                        lintelMesh.castShadow = true;
+                        lintelMesh.receiveShadow = true;
+                        wallGroup.add(lintelMesh);
+                    }
+
+                    // Khung bao & kính trong suốt 3D nằm gọn trong ô tường đục xuyên
+                    createWindowInsideCutout3D(op.item, xLoc, openW, wallThickness, wallGroup);
+                }
+
+                curS = op.end;
+            });
+
+            // Đoạn tường đặc sau ô cửa cuối cùng
+            if (curS < wallLength - 0.5) {
+                const segLen = wallLength - curS;
+                const segMid = curS + segLen / 2;
+                const xLoc = segMid - wallLength / 2;
+
+                const segGeo = new THREE.BoxGeometry(segLen, WALL_HEIGHT, wallThickness);
+                const segMesh = new THREE.Mesh(segGeo, wallMat);
+                segMesh.position.set(xLoc, WALL_HEIGHT / 2, 0);
+                segMesh.castShadow = true;
+                segMesh.receiveShadow = true;
+                wallGroup.add(segMesh);
+
+                const tGeo = new THREE.BoxGeometry(segLen, 5, wallThickness + 1.8);
+                const tMesh = new THREE.Mesh(tGeo, trimMat);
+                tMesh.position.set(xLoc, 2.5, 0);
+                wallGroup.add(tMesh);
+            }
+        }
+
+        // Nẹp nắp đỉnh tường (Wall top cap trim) chạy suốt chiều dài tường
+        const capGeo = new THREE.BoxGeometry(wallLength + 1.5, 3, wallThickness + 2);
+        const capMesh = new THREE.Mesh(capGeo, capMat);
+        capMesh.position.y = WALL_HEIGHT + 1.5;
+        wallGroup.add(capMesh);
+
+        // Hiển thị thêm những đồ thuộc assets, racks, smartlocks được gắn lên trong chi tiết tường
+        if (wallChildren && wallChildren.length > 0) {
+            const wallElevH = wallObj.z_index || 240;
+            const scaleH = WALL_HEIGHT / wallElevH;
+
+            wallChildren.forEach(child => {
+                if (child.object_type === 'asset') {
+                    createWallMountedAsset3D(child, wallGroup, wallLength, wallThickness, scaleH, wallElevH);
+                } else if (child.object_type === 'rack') {
+                    createWallMountedRack3D(child, wallGroup, wallLength, wallThickness, scaleH, wallElevH);
+                } else if (child.object_type === 'smartlock') {
+                    createWallMountedSmartLock3D(child, wallGroup, wallLength, wallThickness, scaleH, wallElevH);
+                }
+            });
+        }
+
+        objectsGroup.add(wallGroup);
+    }
+
+    // ===== 3D CỬA CHÍNH ĐỤC XUYÊN TƯỜNG =====
+    function createDoorInsideCutout3D(obj, xLoc, doorW, wallThickness, wallGroup) {
+        const frameThick = 3.5;
+        const doorDepth = wallThickness + 2.5;
+
+        const doorGroup = new THREE.Group();
+        doorGroup.position.set(xLoc, 0, 0);
+
+        const frameMat = new THREE.MeshStandardMaterial({
+            color: currentTheme.doorFrame,
+            roughness: 0.55,
+            metalness: 0.15
+        });
+
+        // Khung cửa 2 bên (jambs) và trên (lintel) bọc khít quanh ô tường đục xuyên
+        const postGeo = new THREE.BoxGeometry(frameThick, DOOR_HEIGHT, doorDepth);
+        const leftPost = new THREE.Mesh(postGeo, frameMat);
+        leftPost.position.set(-doorW / 2 + frameThick / 2, DOOR_HEIGHT / 2, 0);
+        leftPost.castShadow = true;
+        leftPost.receiveShadow = true;
+        doorGroup.add(leftPost);
+
+        const rightPost = new THREE.Mesh(postGeo, frameMat);
+        rightPost.position.set(doorW / 2 - frameThick / 2, DOOR_HEIGHT / 2, 0);
+        rightPost.castShadow = true;
+        rightPost.receiveShadow = true;
+        doorGroup.add(rightPost);
+
+        const topGeo = new THREE.BoxGeometry(doorW, frameThick, doorDepth);
+        const topFrame = new THREE.Mesh(topGeo, frameMat);
+        topFrame.position.set(0, DOOR_HEIGHT - frameThick / 2, 0);
+        topFrame.castShadow = true;
+        doorGroup.add(topFrame);
+
+        // Cánh cửa hé mở góc 26 độ để lộ rõ lối đi xuyên qua tường
+        const leafW = doorW - frameThick * 2;
+        const leafH = DOOR_HEIGHT - frameThick;
+        const leafThick = 3.5;
+
+        const leafGroup = new THREE.Group();
+        leafGroup.position.set(-doorW / 2 + frameThick, 0, 0);
+        leafGroup.rotation.y = 0.46;
+
+        const leafGeo = new THREE.BoxGeometry(leafW, leafH, leafThick);
+        const leafMat = new THREE.MeshStandardMaterial({
+            color: currentTheme.doorLeaf,
+            roughness: 0.5,
+            metalness: 0.15
+        });
+        const leafMesh = new THREE.Mesh(leafGeo, leafMat);
+        leafMesh.position.set(leafW / 2, leafH / 2, 0);
+        leafMesh.castShadow = true;
+        leafMesh.receiveShadow = true;
+        leafGroup.add(leafMesh);
+
+        // Tay nắm kim loại màu vàng óng
+        const handleGeo = new THREE.CylinderGeometry(1.2, 1.2, 8, 8);
+        const handleMat = new THREE.MeshStandardMaterial({ color: 0xeab308, metalness: 0.9, roughness: 0.2 });
+        const handle = new THREE.Mesh(handleGeo, handleMat);
+        handle.rotation.z = Math.PI / 2;
+        handle.position.set(leafW - 6, leafH / 2, leafThick / 2 + 3);
+        leafGroup.add(handle);
+
+        doorGroup.add(leafGroup);
+
+        doorGroup.userData = {
+            type: 'door',
+            name: `Cửa chính D1 #${obj.object_id || obj.id}`
+        };
+        leftPost.userData = doorGroup.userData;
+        rightPost.userData = doorGroup.userData;
+        leafMesh.userData = doorGroup.userData;
+        interactiveObjects.push(leafMesh);
+
+        wallGroup.add(doorGroup);
+    }
+
+    // ===== 3D CỬA SỔ ĐỤC XUYÊN TƯỜNG =====
+    function createWindowInsideCutout3D(obj, xLoc, winW, wallThickness, wallGroup) {
+        const frameThick = 3.2;
+        const winDepth = wallThickness + 2.5;
+
+        const winGroup = new THREE.Group();
+        winGroup.position.set(xLoc, WINDOW_BOTTOM_OFFSET + WINDOW_HEIGHT / 2, 0);
+
+        const frameMat = new THREE.MeshStandardMaterial({
+            color: currentTheme.windowFrame,
+            roughness: 0.4,
+            metalness: 0.1
+        });
+
+        // 4 cạnh khung bao quanh ô tường đục xuyên
+        const hGeo = new THREE.BoxGeometry(winW, frameThick, winDepth);
+        const bFrame = new THREE.Mesh(hGeo, frameMat);
+        bFrame.position.y = -WINDOW_HEIGHT / 2 + frameThick / 2;
+        winGroup.add(bFrame);
+
+        const tFrame = new THREE.Mesh(hGeo, frameMat);
+        tFrame.position.y = WINDOW_HEIGHT / 2 - frameThick / 2;
+        winGroup.add(tFrame);
+
+        const vGeo = new THREE.BoxGeometry(frameThick, WINDOW_HEIGHT, winDepth);
+        const lFrame = new THREE.Mesh(vGeo, frameMat);
+        lFrame.position.x = -winW / 2 + frameThick / 2;
+        winGroup.add(lFrame);
+
+        const rFrame = new THREE.Mesh(vGeo, frameMat);
+        rFrame.position.x = winW / 2 - frameThick / 2;
+        winGroup.add(rFrame);
+
+        // Đố đứng chia ô ở giữa
+        const mFrame = new THREE.Mesh(vGeo, frameMat);
+        winGroup.add(mFrame);
+
+        // Kính trong suốt nhìn xuyên qua tường
+        const glassGeo = new THREE.BoxGeometry(winW - frameThick * 2, WINDOW_HEIGHT - frameThick * 2, 2.5);
+        const glassMat = new THREE.MeshPhysicalMaterial({
+            color: 0x93c5fd,
+            transparent: true,
+            opacity: 0.45,
+            roughness: 0.1,
+            metalness: 0.1,
+            transmission: 0.7,
+            reflectivity: 0.8
+        });
+        const glassMesh = new THREE.Mesh(glassGeo, glassMat);
+        glassMesh.castShadow = true;
+        winGroup.add(glassMesh);
+
+        // Bậu cửa sổ nhô ra ngoài tường tạo chiều sâu
+        const sillGeo = new THREE.BoxGeometry(winW + 4, 3.2, wallThickness + 5.5);
+        const sill = new THREE.Mesh(sillGeo, frameMat);
+        sill.position.y = -WINDOW_HEIGHT / 2 - 1.6;
+        winGroup.add(sill);
+
+        winGroup.userData = {
+            type: 'window',
+            name: `Cửa sổ CS #${obj.object_id || obj.id}`
+        };
+        glassMesh.userData = winGroup.userData;
+        interactiveObjects.push(glassMesh);
+
+        wallGroup.add(winGroup);
+    }
+
+    // ===== 3D ASSET GẮN TRÊN CHI TIẾT TƯỜNG (MẶT TRƯỚC / MẶT SAU) =====
+    function createWallMountedAsset3D(child, wallGroup, wallLength, wallThickness, scaleH, wallElevH = 240) {
+        const aData = (layoutData.assets || []).find(a => a.id === child.object_id) || {};
+        const rawW = child.width || 110;
+        const rawH = child.height || 70;
+        const gapBetweenFaces = 50;
+        const isBack = (child.wall_face === 'back') || (child.y >= wallElevH + gapBetweenFaces / 2);
+
+        const w = Math.max(Math.min(rawW, wallLength * 0.9), 16);
+        const h = Math.max(Math.min(rawH * scaleH, WALL_HEIGHT * 0.75), 12);
+        const d = 6;
+
+        // Vị trí cục bộ theo chiều dài tường
+        // Mặt trước: child.x từ trái sang phải. Mặt sau: lật đối xứng theo trục ngang vì nhìn từ phía sau.
+        const centerS = isBack ? (wallLength - (child.x + rawW / 2)) : (child.x + rawW / 2);
+        const localX = centerS - (wallLength / 2);
+        const clampedX = Math.max(-wallLength / 2 + w / 2 + 2, Math.min(wallLength / 2 - w / 2 - 2, localX));
+
+        // Vị trí chiều cao từ sàn lên
+        const localYOnFace = isBack ? Math.max(0, child.y - (wallElevH + gapBetweenFaces)) : child.y;
+        const distFromTop = (localYOnFace + rawH / 2) * scaleH;
+        const localY = Math.max(h / 2 + 6, Math.min(WALL_HEIGHT - h / 2 - 6, WALL_HEIGHT - distFromTop));
+
+        // Mặt trước: localZ dương. Mặt sau: localZ âm.
+        const localZ = isBack ? -(wallThickness / 2 + d / 2 + 0.2) : (wallThickness / 2 + d / 2 + 0.2);
+
+        const itemGroup = new THREE.Group();
+        itemGroup.position.set(clampedX, localY, localZ);
+        if (isBack) {
+            itemGroup.rotation.y = Math.PI; // Xoay 180 độ để mặt trước thiết bị quay ra ngoài phía sau tường
+        }
+
+        // Vỏ thiết bị kim loại
+        const bodyGeo = new THREE.BoxGeometry(w, h, d);
+        const bodyMat = new THREE.MeshStandardMaterial({
+            color: 0x1e2433,
+            roughness: 0.35,
+            metalness: 0.7
+        });
+        const bodyMesh = new THREE.Mesh(bodyGeo, bodyMat);
+        bodyMesh.castShadow = true;
+        bodyMesh.receiveShadow = true;
+        itemGroup.add(bodyMesh);
+
+        // Mặt viền thiết bị
+        const frameGeo = new THREE.BoxGeometry(w * 0.94, h * 0.86, 0.8);
+        const frameMat = new THREE.MeshStandardMaterial({
+            color: 0x3b82f6,
+            roughness: 0.3,
+            metalness: 0.5
+        });
+        const frameMesh = new THREE.Mesh(frameGeo, frameMat);
+        frameMesh.position.z = d / 2 + 0.2;
+        itemGroup.add(frameMesh);
+
+        // Đèn LED trạng thái
+        const ledGeo = new THREE.BoxGeometry(2.5, 2.5, 1.2);
+        const ledColor = (aData.status === 'active') ? 0x10b981 : 0xf59e0b;
+        const ledMat = new THREE.MeshBasicMaterial({ color: ledColor });
+        const ledMesh = new THREE.Mesh(ledGeo, ledMat);
+        ledMesh.position.set(-w / 2 + 4.5, h / 2 - 4.5, d / 2 + 0.6);
+        itemGroup.add(ledMesh);
+
+        // Gắn userData cho tương tác chuột
+        itemGroup.userData = {
+            type: 'asset',
+            id: child.object_id,
+            name: (aData.name || `Tài sản treo tường #${child.object_id}`) + (isBack ? ' (Mặt sau)' : ' (Mặt trước)'),
+            face: isBack ? 'Mặt sau' : 'Mặt trước',
+            raw: aData
+        };
+        bodyMesh.userData = itemGroup.userData;
+        frameMesh.userData = itemGroup.userData;
+
+        wallGroup.add(itemGroup);
+        interactiveObjects.push(bodyMesh);
+
+        // Đăng ký thiết bị vào registered3DDevices và tạo nhãn Sprite 3D
+        wallGroup.updateMatrixWorld(true);
+        const worldPos = new THREE.Vector3();
+        itemGroup.getWorldPosition(worldPos);
+
+        const spriteLabel = create3DSpriteLabel(
+            aData.name || `Asset ${child.object_id}`,
+            worldPos.x,
+            worldPos.y + h / 2 + 10,
+            worldPos.z,
+            0xf59e0b,
+            'asset',
+            child.object_id
+        );
+
+        registered3DDevices.set(`asset_${child.object_id}`, {
+            type: 'asset',
+            id: child.object_id,
+            name: aData.name || `Asset #${child.object_id}`,
+            group: itemGroup,
+            mesh: bodyMesh,
+            ledMesh: ledMesh,
+            sprite: spriteLabel,
+            x: worldPos.x,
+            y: worldPos.y,
+            z: worldPos.z,
+            centerY: worldPos.y,
+            w: w,
+            h: h,
+            rot: wallGroup.rotation.y,
+            baseHeight: worldPos.y + h / 2,
+            isWallMounted: true,
+            wallFace: isBack ? 'back' : 'front',
+            wallRotation: wallGroup.rotation.y
+        });
+    }
+
+    // ===== 3D TỦ RACK GẮN TRÊN CHI TIẾT TƯỜNG (MẶT TRƯỚC / MẶT SAU) =====
+    function createWallMountedRack3D(child, wallGroup, wallLength, wallThickness, scaleH, wallElevH = 240) {
+        const rData = (layoutData.racks || []).find(r => r.id === child.object_id) || {};
+        const rawW = child.width || 80;
+        const rawH = child.height || 160;
+        const gapBetweenFaces = 50;
+        const isBack = (child.wall_face === 'back') || (child.y >= wallElevH + gapBetweenFaces / 2);
+
+        const w = Math.max(Math.min(rawW, wallLength * 0.85), 22);
+        const h = Math.max(Math.min(rawH * scaleH, WALL_HEIGHT * 0.85), 24);
+        const d = 22;
+
+        const centerS = isBack ? (wallLength - (child.x + rawW / 2)) : (child.x + rawW / 2);
+        const localX = centerS - (wallLength / 2);
+        const clampedX = Math.max(-wallLength / 2 + w / 2 + 2, Math.min(wallLength / 2 - w / 2 - 2, localX));
+
+        const localYOnFace = isBack ? Math.max(0, child.y - (wallElevH + gapBetweenFaces)) : child.y;
+        const distFromTop = (localYOnFace + rawH / 2) * scaleH;
+        const localY = Math.max(h / 2 + 2, Math.min(WALL_HEIGHT - h / 2 - 2, WALL_HEIGHT - distFromTop));
+
+        const localZ = isBack ? -(wallThickness / 2 + d / 2 + 0.2) : (wallThickness / 2 + d / 2 + 0.2);
+
+        const itemGroup = new THREE.Group();
+        itemGroup.position.set(clampedX, localY, localZ);
+        if (isBack) {
+            itemGroup.rotation.y = Math.PI; // Xoay 180 độ để mặt cửa tủ rack quay ra ngoài phía sau tường
+        }
+
+        // Khung tủ rack
+        const cabGeo = new THREE.BoxGeometry(w, h, d);
+        const cabMat = new THREE.MeshStandardMaterial({
+            color: currentTheme.rackChassis,
+            roughness: 0.45,
+            metalness: 0.7
+        });
+        const cabMesh = new THREE.Mesh(cabGeo, cabMat);
+        cabMesh.castShadow = true;
+        cabMesh.receiveShadow = true;
+        itemGroup.add(cabMesh);
+
+        // Cửa kính mica phía trước
+        const doorGeo = new THREE.PlaneGeometry(w * 0.86, h * 0.86);
+        const doorMat = new THREE.MeshPhysicalMaterial({
+            color: 0x141a29,
+            transparent: true,
+            opacity: 0.65,
+            roughness: 0.15,
+            transmission: 0.35
+        });
+        const doorMesh = new THREE.Mesh(doorGeo, doorMat);
+        doorMesh.position.z = d / 2 + 0.3;
+        itemGroup.add(doorMesh);
+
+        // Đèn LED bên trong tủ
+        const ledGeo = new THREE.CylinderGeometry(0.8, 0.8, h * 0.75, 8);
+        const ledMat = new THREE.MeshBasicMaterial({ color: currentTheme.accentLight });
+        const ledMesh = new THREE.Mesh(ledGeo, ledMat);
+        ledMesh.position.set(-w / 2 + 3.5, 0, d / 2 - 2);
+        itemGroup.add(ledMesh);
+
+        // Gắn userData cho tương tác chuột
+        itemGroup.userData = {
+            type: 'rack',
+            id: child.object_id,
+            name: (rData.name || `Tủ Rack treo tường #${child.object_id}`) + (isBack ? ' (Mặt sau)' : ' (Mặt trước)'),
+            face: isBack ? 'Mặt sau' : 'Mặt trước',
+            raw: rData
+        };
+        cabMesh.userData = itemGroup.userData;
+        doorMesh.userData = itemGroup.userData;
+
+        wallGroup.add(itemGroup);
+        interactiveObjects.push(cabMesh);
+
+        // Đăng ký thiết bị vào registered3DDevices và tạo nhãn Sprite 3D
+        wallGroup.updateMatrixWorld(true);
+        const rackWorldPos = new THREE.Vector3();
+        itemGroup.getWorldPosition(rackWorldPos);
+
+        const rackSpriteLabel = create3DSpriteLabel(
+            rData.name || `Rack ${child.object_id}`,
+            rackWorldPos.x,
+            rackWorldPos.y + h / 2 + 12,
+            rackWorldPos.z,
+            currentTheme.accentLight,
+            'rack',
+            child.object_id
+        );
+
+        registered3DDevices.set(`rack_${child.object_id}`, {
+            type: 'rack',
+            id: child.object_id,
+            name: rData.name || `Rack #${child.object_id}`,
+            group: itemGroup,
+            mesh: cabMesh,
+            ledMesh: ledMesh,
+            sprite: rackSpriteLabel,
+            x: rackWorldPos.x,
+            y: rackWorldPos.y,
+            z: rackWorldPos.z,
+            centerY: rackWorldPos.y,
+            w: w,
+            h: h,
+            rot: wallGroup.rotation.y,
+            baseHeight: rackWorldPos.y + h / 2,
+            isWallMounted: true,
+            wallFace: isBack ? 'back' : 'front',
+            wallRotation: wallGroup.rotation.y
+        });
+    }
+
+    // ===== 3D SMART LOCK GẮN TRÊN CHI TIẾT TƯỜNG (MẶT TRƯỚC / MẶT SAU) =====
+    function createWallMountedSmartLock3D(child, wallGroup, wallLength, wallThickness, scaleH, wallElevH = 240) {
+        const sData = (layoutData.smartlocks || []).find(s => s.id === child.object_id) || {};
+        const rawW = child.width || 30;
+        const rawH = child.height || 50;
+        const gapBetweenFaces = 50;
+        const isBack = (child.wall_face === 'back') || (child.y >= wallElevH + gapBetweenFaces / 2);
+
+        const w = Math.max(Math.min(rawW, wallLength * 0.4), 14);
+        const h = Math.max(Math.min(rawH * scaleH, WALL_HEIGHT * 0.6), 22);
+        const d = 4.5;
+
+        const centerS = isBack ? (wallLength - (child.x + rawW / 2)) : (child.x + rawW / 2);
+        const localX = centerS - (wallLength / 2);
+        const clampedX = Math.max(-wallLength / 2 + w / 2 + 2, Math.min(wallLength / 2 - w / 2 - 2, localX));
+
+        const localYOnFace = isBack ? Math.max(0, child.y - (wallElevH + gapBetweenFaces)) : child.y;
+        const distFromTop = (localYOnFace + rawH / 2) * scaleH;
+        const localY = Math.max(h / 2 + 6, Math.min(WALL_HEIGHT - h / 2 - 6, WALL_HEIGHT - distFromTop));
+
+        const localZ = isBack ? -(wallThickness / 2 + d / 2 + 0.2) : (wallThickness / 2 + d / 2 + 0.2);
+
+        const itemGroup = new THREE.Group();
+        itemGroup.position.set(clampedX, localY, localZ);
+        if (isBack) {
+            itemGroup.rotation.y = Math.PI;
+        }
+
+        // Thân khóa thông minh
+        const bodyGeo = new THREE.BoxGeometry(w, h, d);
+        const bodyMat = new THREE.MeshStandardMaterial({
+            color: 0x1e293b,
+            roughness: 0.35,
+            metalness: 0.8
+        });
+        const bodyMesh = new THREE.Mesh(bodyGeo, bodyMat);
+        bodyMesh.castShadow = true;
+        bodyMesh.receiveShadow = true;
+        itemGroup.add(bodyMesh);
+
+        // Bàn phím số / màn hình cảm ứng
+        const padGeo = new THREE.BoxGeometry(w * 0.82, h * 0.45, 0.6);
+        const padMat = new THREE.MeshStandardMaterial({
+            color: 0x0f172a,
+            roughness: 0.2,
+            metalness: 0.4
+        });
+        const padMesh = new THREE.Mesh(padGeo, padMat);
+        padMesh.position.set(0, h * 0.15, d / 2 + 0.2);
+        itemGroup.add(padMesh);
+
+        // Đèn LED trạng thái
+        const ledGeo = new THREE.BoxGeometry(2, 2, 0.8);
+        const isUnlocked = (sData.status === 'active' || sData.status === 'unlocked');
+        const ledMat = new THREE.MeshBasicMaterial({ color: isUnlocked ? 0x10b981 : 0xef4444 });
+        const ledMesh = new THREE.Mesh(ledGeo, ledMat);
+        ledMesh.position.set(0, h * 0.4, d / 2 + 0.3);
+        itemGroup.add(ledMesh);
+
+        itemGroup.userData = {
+            type: 'smartlock',
+            id: child.object_id,
+            name: (sData.name || `Khóa thông minh #${child.object_id}`) + (isBack ? ' (Mặt sau)' : ' (Mặt trước)'),
+            face: isBack ? 'Mặt sau' : 'Mặt trước',
+            raw: sData
+        };
+        bodyMesh.userData = itemGroup.userData;
+        padMesh.userData = itemGroup.userData;
+
+        wallGroup.add(itemGroup);
+        interactiveObjects.push(bodyMesh);
+    }
+
+    // ===== 3D CỬA CHÍNH MẶT BẰNG (door_1) =====
+    function createFloorDoor3D(obj, x, z, w, h, rot) {
+        const doorW = Math.max(w || 50, 48);
+        const doorThickness = 16;
+        const frameThick = 3.5;
+
+        const doorGroup = new THREE.Group();
+        doorGroup.position.set(x, 0, z);
+        doorGroup.rotation.y = rot;
+
+        const frameMat = new THREE.MeshStandardMaterial({ color: currentTheme.doorFrame, roughness: 0.6 });
+
+        // Left post, Right post, Top lintel
+        const postGeo = new THREE.BoxGeometry(frameThick, DOOR_HEIGHT, doorThickness);
+        const leftPost = new THREE.Mesh(postGeo, frameMat);
+        leftPost.position.set(-doorW / 2 + frameThick / 2, DOOR_HEIGHT / 2, 0);
+        leftPost.castShadow = true;
+        doorGroup.add(leftPost);
+
+        const rightPost = new THREE.Mesh(postGeo, frameMat);
+        rightPost.position.set(doorW / 2 - frameThick / 2, DOOR_HEIGHT / 2, 0);
+        rightPost.castShadow = true;
+        doorGroup.add(rightPost);
+
+        const topGeo = new THREE.BoxGeometry(doorW, frameThick, doorThickness);
+        const topFrame = new THREE.Mesh(topGeo, frameMat);
+        topFrame.position.set(0, DOOR_HEIGHT - frameThick / 2, 0);
+        topFrame.castShadow = true;
+        doorGroup.add(topFrame);
+
+        // Door leaf (Hé mở 24 độ nghệ thuật diorama)
+        const leafW = doorW - frameThick * 2;
+        const leafH = DOOR_HEIGHT - frameThick;
+        const leafThick = 3.5;
+        const leafGroup = new THREE.Group();
+        leafGroup.position.set(-doorW / 2 + frameThick, 0, 0);
+        leafGroup.rotation.y = 0.42;
+
+        const leafGeo = new THREE.BoxGeometry(leafW, leafH, leafThick);
+        const leafMat = new THREE.MeshStandardMaterial({
+            color: currentTheme.doorLeaf,
+            roughness: 0.5,
+            metalness: 0.15
+        });
+        const leafMesh = new THREE.Mesh(leafGeo, leafMat);
+        leafMesh.position.set(leafW / 2, leafH / 2, 0);
+        leafMesh.castShadow = true;
+        leafMesh.receiveShadow = true;
+        leafGroup.add(leafMesh);
+
+        // Door lever handle
+        const handleGeo = new THREE.CylinderGeometry(1.1, 1.1, 8, 8);
+        const handleMat = new THREE.MeshStandardMaterial({ color: 0xeab308, metalness: 0.9, roughness: 0.2 });
+        const handle = new THREE.Mesh(handleGeo, handleMat);
+        handle.rotation.z = Math.PI / 2;
+        handle.position.set(leafW - 6, leafH / 2, leafThick / 2 + 3);
+        leafGroup.add(handle);
+
+        doorGroup.add(leafGroup);
+
+        objectsGroup.add(doorGroup);
+    }
+
+    // ===== 3D CỬA SỔ MẶT BẰNG (door_2) =====
+    function createFloorWindow3D(obj, x, z, w, h, rot) {
+        const winW = Math.max(w || 80, 48);
+        const winThickness = Math.max(h || 16, 16);
+        const frameThick = 3.2;
+
+        const winGroup = new THREE.Group();
+        winGroup.position.set(x, WINDOW_BOTTOM_OFFSET + WINDOW_HEIGHT / 2, z);
+        winGroup.rotation.y = rot;
+
+        const frameMat = new THREE.MeshStandardMaterial({ color: currentTheme.windowFrame, roughness: 0.4 });
+
+        // Outer frame 4 sides
+        const hGeo = new THREE.BoxGeometry(winW, frameThick, winThickness);
+        const bFrame = new THREE.Mesh(hGeo, frameMat);
+        bFrame.position.y = -WINDOW_HEIGHT / 2 + frameThick / 2;
+        winGroup.add(bFrame);
+
+        const tFrame = new THREE.Mesh(hGeo, frameMat);
+        tFrame.position.y = WINDOW_HEIGHT / 2 - frameThick / 2;
+        winGroup.add(tFrame);
+
+        const vGeo = new THREE.BoxGeometry(frameThick, WINDOW_HEIGHT, winThickness);
+        const lFrame = new THREE.Mesh(vGeo, frameMat);
+        lFrame.position.x = -winW / 2 + frameThick / 2;
+        winGroup.add(lFrame);
+
+        const rFrame = new THREE.Mesh(vGeo, frameMat);
+        rFrame.position.x = winW / 2 - frameThick / 2;
+        winGroup.add(rFrame);
+
+        // Center divider mullion
+        const mFrame = new THREE.Mesh(vGeo, frameMat);
+        winGroup.add(mFrame);
+
+        // Translucent physical glass
+        const glassGeo = new THREE.BoxGeometry(winW - frameThick * 2, WINDOW_HEIGHT - frameThick * 2, 2.5);
+        const glassMat = new THREE.MeshPhysicalMaterial({
+            color: 0x93c5fd,
+            transparent: true,
+            opacity: 0.45,
+            roughness: 0.1,
+            metalness: 0.1,
+            transmission: 0.65,
+            reflectivity: 0.7
+        });
+        const glassMesh = new THREE.Mesh(glassGeo, glassMat);
+        glassMesh.castShadow = true;
+        winGroup.add(glassMesh);
+
+        // Window sill base ledge
+        const sillGeo = new THREE.BoxGeometry(winW + 4, 3, winThickness + 3);
+        const sill = new THREE.Mesh(sillGeo, frameMat);
+        sill.position.y = -WINDOW_HEIGHT / 2 - 1.5;
+        winGroup.add(sill);
+
+        objectsGroup.add(winGroup);
+    }
+
+    // ===== 3D SERVER RACK CABINET =====
+    function createRack3D(obj, rData, x, z, w, h, rot) {
+        const rackHeight = RACK_HEIGHT;
+        const rackWidth = Math.max(20, w);
+        const rackDepth = Math.max(20, h);
+
+        const rackGroup = new THREE.Group();
+        rackGroup.position.set(x, 0, z);
+        rackGroup.rotation.y = rot;
+
+        // Chassis body
+        const chassisGeo = new THREE.BoxGeometry(rackWidth, rackHeight, rackDepth);
+        const chassisMat = new THREE.MeshStandardMaterial({
+            color: currentTheme.rackChassis,
+            roughness: 0.35,
+            metalness: 0.65
+        });
+        const chassis = new THREE.Mesh(chassisGeo, chassisMat);
+        chassis.position.y = rackHeight / 2;
+        chassis.castShadow = true;
+        chassis.receiveShadow = true;
+        rackGroup.add(chassis);
+
+        // Front glass / perforated door
+        const doorGeo = new THREE.BoxGeometry(rackWidth * 0.88, rackHeight * 0.92, 2.5);
+        const doorMat = new THREE.MeshPhysicalMaterial({
+            color: currentTheme.rackDoor,
+            transparent: true,
+            opacity: 0.85,
+            roughness: 0.2,
+            metalness: 0.8,
+            reflectivity: 0.6
+        });
+        const frontDoor = new THREE.Mesh(doorGeo, doorMat);
+        frontDoor.position.set(0, rackHeight / 2, rackDepth / 2 + 1.2);
+        rackGroup.add(frontDoor);
+
+        // LED Utilization bar
+        const freePct = (rData.free_percentage !== undefined) ? rData.free_percentage : 100;
+        let ledColor = 0x10b981; // Green
+        if (freePct < 15) ledColor = 0xef4444;      // Red
+        else if (freePct < 45) ledColor = 0xf59e0b; // Orange
+        else if (freePct < 75) ledColor = 0x0ea5e9; // Blue
+
+        const ledGeo = new THREE.BoxGeometry(rackWidth * 0.8, 3, 2.5);
+        const ledMat = new THREE.MeshBasicMaterial({ color: ledColor });
+        const ledBar = new THREE.Mesh(ledGeo, ledMat);
+        ledBar.position.set(0, rackHeight - 6, rackDepth / 2 + 2.5);
+        rackGroup.add(ledBar);
+
+        // Smart Lock indicator
+        if (rData.front_status) {
+            const lockW = Math.min(8, rackWidth * 0.12);
+            const lockGeo = new THREE.BoxGeometry(lockW, 12, 4);
+            const lockMat = new THREE.MeshStandardMaterial({
+                color: rData.front_status === 'active' ? 0x10b981 : 0xef4444,
+                metalness: 0.8
+            });
+            const lockMesh = new THREE.Mesh(lockGeo, lockMat);
+            lockMesh.position.set(rackWidth / 2 - lockW / 2 - 4, rackHeight / 2, rackDepth / 2 + 2.5);
+            rackGroup.add(lockMesh);
+        }
+
+        chassis.userData = {
+            type: 'rack',
+            name: rData.name || `Rack #${obj.object_id}`,
+            id: obj.object_id,
+            raw: rData
+        };
+        interactiveObjects.push(chassis);
+
+        // 3D Floating Pill Label Sprite
+        const spriteLabel = create3DSpriteLabel(rData.name || `Rack ${obj.object_id}`, x, rackHeight + 14, z, ledColor, 'rack', obj.object_id);
+
+        registered3DDevices.set(`rack_${obj.object_id}`, {
+            type: 'rack',
+            id: obj.object_id,
+            name: rData.name || `Rack #${obj.object_id}`,
+            group: rackGroup,
+            mesh: chassis,
+            ledMesh: ledBar,
+            sprite: spriteLabel,
+            x: x,
+            y: rackHeight * 0.5,
+            z: z,
+            centerY: rackHeight * 0.5,
+            w: rackWidth,
+            h: rackDepth,
+            rot: rot,
+            baseHeight: rackHeight,
+            isWallMounted: false
+        });
+
+        objectsGroup.add(rackGroup);
+    }
+
+    // ===== 3D ASSET =====
+    function createAsset3D(obj, aData, x, z, w, h, rot) {
+        const assetH = 45;
+        const assetW = Math.max(20, w);
+        const assetD = Math.max(20, h);
+
+        const assetGroup = new THREE.Group();
+        assetGroup.position.set(x, assetH / 2, z);
+        assetGroup.rotation.y = rot;
+
+        const geo = new THREE.BoxGeometry(assetW, assetH, assetD);
+        const mat = new THREE.MeshStandardMaterial({
+            color: 0x334155,
+            roughness: 0.4,
+            metalness: 0.5
+        });
+        const mesh = new THREE.Mesh(geo, mat);
+        mesh.castShadow = true;
+        mesh.receiveShadow = true;
+        assetGroup.add(mesh);
+
+        // Face panel
+        const panelGeo = new THREE.PlaneGeometry(assetW * 0.9, assetH * 0.8);
+        const panelMat = new THREE.MeshBasicMaterial({ color: 0x1e293b });
+        const panel = new THREE.Mesh(panelGeo, panelMat);
+        panel.position.z = assetD / 2 + 0.2;
+        assetGroup.add(panel);
+
+        // LED status light on face panel
+        const ledGeo = new THREE.BoxGeometry(3, 3, 1.2);
+        const ledColor = (aData.status === 'active') ? 0x10b981 : 0xf59e0b;
+        const ledMat = new THREE.MeshBasicMaterial({ color: ledColor });
+        const ledMesh = new THREE.Mesh(ledGeo, ledMat);
+        ledMesh.position.set(-assetW / 2 + 6, assetH * 0.25, assetD / 2 + 0.5);
+        assetGroup.add(ledMesh);
+
+        mesh.userData = {
+            type: 'asset',
+            name: aData.name || `Asset #${obj.object_id}`,
+            id: obj.object_id,
+            raw: aData
+        };
+        interactiveObjects.push(mesh);
+
+        const spriteLabel = create3DSpriteLabel(aData.name || `Asset ${obj.object_id}`, x, assetH + 12, z, 0xf59e0b, 'asset', obj.object_id);
+
+        registered3DDevices.set(`asset_${obj.object_id}`, {
+            type: 'asset',
+            id: obj.object_id,
+            name: aData.name || `Asset #${obj.object_id}`,
+            group: assetGroup,
+            mesh: mesh,
+            ledMesh: ledMesh,
+            sprite: spriteLabel,
+            x: x,
+            y: assetH * 0.5,
+            z: z,
+            centerY: assetH * 0.5,
+            w: assetW,
+            h: assetD,
+            rot: rot,
+            baseHeight: assetH,
+            isWallMounted: false
+        });
+
+        objectsGroup.add(assetGroup);
+    }
+
+    // ===== 3D FLOATING LABEL SPRITE =====
+    function create3DSpriteLabel(text, x, y, z, accentColor, deviceType, deviceId) {
+        const canvas = document.createElement('canvas');
+        canvas.width = 300;
+        canvas.height = 70;
+        const ctx = canvas.getContext('2d');
+
+        const strokeHex = typeof accentColor === 'number' ? `#${accentColor.toString(16).padStart(6, '0')}` : (accentColor || '#6366f1');
+
+        ctx.fillStyle = 'rgba(15, 17, 23, 0.90)';
+        ctx.beginPath();
+        ctx.roundRect(8, 8, 284, 54, 14);
+        ctx.fill();
+
+        ctx.strokeStyle = strokeHex;
+        ctx.lineWidth = 2.8;
+        ctx.stroke();
+
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold 22px system-ui, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(text, 150, 35);
+
+        const texture = new THREE.CanvasTexture(canvas);
+        texture.minFilter = THREE.LinearFilter;
+
+        const spriteMat = new THREE.SpriteMaterial({ map: texture, transparent: true, depthWrite: false });
+        const sprite = new THREE.Sprite(spriteMat);
+        sprite.position.set(x, y, z);
+        sprite.scale.set(40, 9.3, 1);
+
+        sprite.userData = {
+            deviceType: deviceType,
+            deviceId: deviceId,
+            rackId: (deviceType === 'rack' ? deviceId : null),
+            baseText: text,
+            accentColor: strokeHex,
+            canvas: canvas,
+            ctx: ctx,
+            texture: texture,
+            baseScale: { x: 40, y: 9.3 }
+        };
+
+        labelsGroup.add(sprite);
+        return sprite;
+    }
+
+    function updateDeviceSpriteLabel(sprite, temp, status, customName) {
+        if (!sprite || !sprite.userData || !sprite.userData.ctx) return;
+        const ctx = sprite.userData.ctx;
+        const canvas = sprite.userData.canvas;
+        const name = customName || sprite.userData.baseText || 'Device';
+        const numTemp = Number(temp).toFixed(1);
+
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        if (status === 'critical') {
+            // NỀN ĐỎ RỰC RỠ CẢNH BÁO QUÁ NHIỆT (CRITICAL ALARM)
+            const grad = ctx.createLinearGradient(0, 0, canvas.width, 0);
+            grad.addColorStop(0, 'rgba(239, 68, 68, 0.96)');
+            grad.addColorStop(1, 'rgba(185, 28, 28, 0.98)');
+            ctx.fillStyle = grad;
+            ctx.beginPath();
+            ctx.roundRect(6, 6, 288, 58, 14);
+            ctx.fill();
+
+            // Viền phát sáng trắng
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.95)';
+            ctx.lineWidth = 3.5;
+            ctx.stroke();
+
+            ctx.fillStyle = '#ffffff';
+            ctx.font = 'bold 22px system-ui, sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(`🔥 ${name} · ${numTemp}°C QUÁ NHIỆT!`, 150, 35);
+
+            // Tăng kích thước nhãn để đập ngay vào mắt người dùng
+            sprite.scale.set(48, 11.2, 1);
+        } else if (status === 'warning') {
+            // VÀNG CAM CẢNH BÁO (WARNING)
+            ctx.fillStyle = 'rgba(217, 119, 6, 0.94)';
+            ctx.beginPath();
+            ctx.roundRect(8, 8, 284, 54, 14);
+            ctx.fill();
+
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = 2.5;
+            ctx.stroke();
+
+            ctx.fillStyle = '#ffffff';
+            ctx.font = 'bold 21px system-ui, sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(`⚠️ ${name} · ${numTemp}°C (Ấm)`, 150, 35);
+
+            sprite.scale.set(43, 10.0, 1);
+        } else {
+            // BÌNH THƯỜNG / MÁT (COOL / NORMAL)
+            ctx.fillStyle = 'rgba(15, 17, 23, 0.88)';
+            ctx.beginPath();
+            ctx.roundRect(8, 8, 284, 54, 14);
+            ctx.fill();
+
+            ctx.strokeStyle = (status === 'cool') ? '#0ea5e9' : '#10b981';
+            ctx.lineWidth = 2.5;
+            ctx.stroke();
+
+            ctx.fillStyle = '#ffffff';
+            ctx.font = 'bold 21px system-ui, sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(`❄️ ${name} · ${numTemp}°C`, 150, 35);
+
+            sprite.scale.set(40, 9.3, 1);
+        }
+
+        sprite.userData.texture.needsUpdate = true;
+    }
+
+    // ===== RAYCASTING & INTERACTION =====
+    function onMouseMove(event) {
+        const rect = container.getBoundingClientRect();
+        mouse.x = ((event.clientX - rect.left) / container.clientWidth) * 2 - 1;
+        mouse.y = -((event.clientY - rect.top) / container.clientHeight) * 2 + 1;
+
+        raycaster.setFromCamera(mouse, camera);
+        const intersects = raycaster.intersectObjects(interactiveObjects);
+
+        if (intersects.length > 0) {
+            const hit = intersects[0].object;
+            if (hoveredObject !== hit) {
+                if (hoveredObject && hoveredObject.material && hoveredObject.material.emissive) {
+                    // Trả lại emissive màu đỏ nếu thiết bị đang quá nhiệt
+                    const wasCritical = criticalPulsingItems.includes(hoveredObject);
+                    hoveredObject.material.emissive.setHex(wasCritical ? 0xef4444 : 0x000000);
+                }
+                hoveredObject = hit;
+                if (hoveredObject.material && hoveredObject.material.emissive) {
+                    hoveredObject.material.emissive.setHex(0x334466);
+                }
+                container.style.cursor = 'pointer';
+            }
+
+            const tData = deviceTempMap.get(`${hit.userData.type}_${hit.userData.id}`) || (hit.userData.type === 'rack' ? rackTempMap.get(hit.userData.id) : null);
+            let tempText = '';
+            if (tData) {
+                const curT = Number(tData.current_temp || tData.temp).toFixed(1);
+                const st = tData.temp_status || tData.status || 'normal';
+                tempText = (st === 'critical') ? ` · 🔥 ${curT}°C (QUÁ NHIỆT)` : ` · 🌡️ ${curT}°C`;
+            }
+            tooltipEl.textContent = (hit.userData.name || 'Thiết bị') + tempText;
+            tooltipEl.style.left = `${event.clientX - rect.left}px`;
+            tooltipEl.style.top = `${event.clientY - rect.top}px`;
+            tooltipEl.style.opacity = '1';
+        } else {
+            if (hoveredObject) {
+                if (hoveredObject.material && hoveredObject.material.emissive) {
+                    const wasCritical = criticalPulsingItems.includes(hoveredObject);
+                    hoveredObject.material.emissive.setHex(wasCritical ? 0xef4444 : 0x000000);
+                }
+                hoveredObject = null;
+                container.style.cursor = 'grab';
+            }
+            tooltipEl.style.opacity = '0';
+        }
+    }
+
+    function onMouseClick(event) {
+        const rect = container.getBoundingClientRect();
+        mouse.x = ((event.clientX - rect.left) / container.clientWidth) * 2 - 1;
+        mouse.y = -((event.clientY - rect.top) / container.clientHeight) * 2 + 1;
+
+        raycaster.setFromCamera(mouse, camera);
+        const intersects = raycaster.intersectObjects(interactiveObjects);
+        if (intersects.length > 0) {
+            selectedObject = intersects[0].object;
+            openDrawer(selectedObject.userData);
+        } else if (hoveredObject) {
+            selectedObject = hoveredObject;
+            openDrawer(selectedObject.userData);
+        }
+    }
+
+    // ===== INSPECT DRAWER UI =====
+    function openDrawer(userData) {
+        drawerTitleEl.textContent = userData.name || 'Chi tiết';
+        let html = '';
+
+        const tData = deviceTempMap.get(`${userData.type}_${userData.id}`) || (userData.type === 'rack' ? rackTempMap.get(userData.id) : null);
+        let tempHtml = '';
+        if (tData) {
+            const curT = Number(tData.current_temp || tData.temp);
+            const st = getThermalStatus(curT);
+            const isCrit = (tData.temp_status === 'critical' || curT > 32.0);
+            tempHtml = `
+                <div class="v3d-prop-group" style="${isCrit ? 'background:rgba(239,68,68,0.15); border:1px solid rgba(239,68,68,0.4); border-radius:8px; padding:8px 12px;' : ''}">
+                    <div class="v3d-prop-label" style="${isCrit ? 'color:#f87171; font-weight:700;' : ''}">
+                        Nhiệt độ hiện tại ${isCrit ? '⚠️ BÁO ĐỘNG QUÁ NHIỆT' : '(Dynamic Heatmap)'}
+                    </div>
+                    <div class="v3d-prop-val" style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                        <span class="badge" style="background:${isCrit ? '#ef4444' : st.color}; font-size:13px; font-weight:700; padding:5px 10px; color:#fff;">
+                            ${isCrit ? '🔥' : '🌡️'} ${curT.toFixed(1)}°C (${isCrit ? 'QUÁ NHIỆT' : st.label})
+                        </span>
+                        <span style="color:var(--v3d-text-muted); font-size:12px;">Dải cài đặt: [${tData.min_temp !== undefined ? tData.min_temp : 20}°C - ${tData.max_temp !== undefined ? tData.max_temp : 30}°C]</span>
+                    </div>
+                    <div style="margin-top:8px;">
+                        <button class="btn btn-sm btn-outline-warning w-100" style="font-size:11px; padding:4px 8px; border-radius:6px;" onclick="open3DTempEditModal('${userData.type}', ${userData.id}, '${(userData.name || '').replace(/'/g, "\\'")}', ${tData.min_temp !== undefined ? tData.min_temp : 20}, ${tData.max_temp !== undefined ? tData.max_temp : 30})">
+                            ✏️ Cập nhật Dải Nhiệt Độ [a, b]
+                        </button>
+                    </div>
+                </div>
+            `;
+        }
+
+        if (userData.type === 'rack') {
+            const r = userData.raw || {};
+            const freeU = r.free_u !== undefined ? r.free_u : '—';
+            const totalU = r.u_height || '—';
+            const freePct = r.free_percentage !== undefined ? r.free_percentage : 0;
+            const usedPct = 100 - freePct;
+
+            let barColor = '#10b981';
+            if (freePct < 15) barColor = '#ef4444';
+            else if (freePct < 45) barColor = '#f59e0b';
+            else if (freePct < 75) barColor = '#0ea5e9';
+
+            html = `
+                <div class="v3d-prop-group">
+                    <div class="v3d-prop-label">Loại đối tượng</div>
+                    <div class="v3d-prop-val">🖥️ Tủ Rack máy chủ</div>
+                </div>
+                ${tempHtml}
+                <div class="v3d-prop-group">
+                    <div class="v3d-prop-label">Trạng thái tủ</div>
+                    <div class="v3d-prop-val"><span class="badge" style="background:${barColor}">${r.status || 'Active'}</span></div>
+                </div>
+                <div class="v3d-prop-group">
+                    <div class="v3d-prop-label">Dung lượng sử dụng (U)</div>
+                    <div class="v3d-prop-val">Còn trống ${freeU} / ${totalU} U (${freePct}% trống)</div>
+                    <div class="v3d-progress-bar">
+                        <div class="v3d-progress-fill" style="width:${usedPct}%; background:${barColor};"></div>
+                    </div>
+                </div>
+                <div class="v3d-prop-group">
+                    <div class="v3d-prop-label">Khóa thông minh (Smart Lock)</div>
+                    <div class="v3d-prop-val">
+                        Mặt trước: ${r.front_status ? '🔒 Đã gắn (' + r.front_status + ')' : '—'}<br>
+                        Mặt sau: ${r.rear_status ? '🔒 Đã gắn (' + r.rear_status + ')' : '—'}
+                    </div>
+                </div>
+                <div style="margin-top:14px;">
+                    <a href="/dcim/racks/${userData.id}/" target="_blank" class="btn btn-sm btn-primary w-100">
+                        Xem chi tiết tủ trong NetBox ↗
+                    </a>
+                </div>
+            `;
+        } else if (userData.type === 'asset') {
+            const a = userData.raw || {};
+            html = `
+                <div class="v3d-prop-group">
+                    <div class="v3d-prop-label">Loại tài sản</div>
+                    <div class="v3d-prop-val">📦 ${a.device_type || 'Thiết bị'}</div>
+                </div>
+                ${tempHtml}
+                <div class="v3d-prop-group">
+                    <div class="v3d-prop-label">Mã tài sản</div>
+                    <div class="v3d-prop-val">${a.asset_code || '—'}</div>
+                </div>
+                <div class="v3d-prop-group">
+                    <div class="v3d-prop-label">Model / Hãng sản xuất</div>
+                    <div class="v3d-prop-val">${a.manufacturer || ''} ${a.model || '—'}</div>
+                </div>
+                <div class="v3d-prop-group">
+                    <div class="v3d-prop-label">Số Serial</div>
+                    <div class="v3d-prop-val">${a.serial_number || '—'}</div>
+                </div>
+                <div class="v3d-prop-group">
+                    <div class="v3d-prop-label">Nhóm tài sản</div>
+                    <div class="v3d-prop-val">${a.asset_group || '—'}</div>
+                </div>
+            `;
+        }
+
+        drawerBodyEl.innerHTML = html;
+        drawerEl.classList.add('open');
+    }
+
+    function closeDrawer() {
+        drawerEl.classList.remove('open');
+    }
+
+    let editing3DDevice = null;
+    window.open3DTempEditModal = function(type, id, name, minT, maxT) {
+        editing3DDevice = { type, id, name };
+        document.getElementById('v3d-temp-modal-title').textContent = `Sửa dải nhiệt độ: ${name}`;
+        document.getElementById('v3d-temp-min').value = minT;
+        document.getElementById('v3d-temp-max').value = maxT;
+        document.getElementById('v3d-temp-error').style.display = 'none';
+        const btn = document.getElementById('v3d-btn-save-temp');
+        if (btn) { btn.disabled = false; btn.textContent = 'Lưu & Cập Nhật'; }
+        document.getElementById('v3d-temp-modal').style.display = 'flex';
+    };
+
+    window.close3DTempEditModal = function() {
+        document.getElementById('v3d-temp-modal').style.display = 'none';
+        editing3DDevice = null;
+    };
+
+    window.save3DTemp = async function() {
+        if (!editing3DDevice) return;
+        const minT = parseFloat(document.getElementById('v3d-temp-min').value);
+        const maxT = parseFloat(document.getElementById('v3d-temp-max').value);
+        const errEl = document.getElementById('v3d-temp-error');
+        const btn = document.getElementById('v3d-btn-save-temp');
+
+        if (isNaN(minT) || isNaN(maxT)) {
+            errEl.textContent = 'Vui lòng nhập đầy đủ giá trị a và b!';
+            errEl.style.display = 'block';
+            return;
+        }
+        if (minT > maxT) {
+            errEl.textContent = 'Nhiệt độ Min không được lớn hơn Max!';
+            errEl.style.display = 'block';
+            return;
+        }
+        errEl.style.display = 'none';
+        if (btn) { btn.disabled = true; btn.textContent = '⏳ Đang lưu...'; }
+
+        try {
+            const resp = await fetch(`/api/plugins/rack-layout/temperature/${LOCATION_ID}/update/`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': '{{ csrf_token }}'
+                },
+                body: JSON.stringify({
+                    object_type: editing3DDevice.type,
+                    object_id: editing3DDevice.id,
+                    min_temp: minT,
+                    max_temp: maxT
+                })
+            });
+            const data = await resp.json();
+            if (resp.ok && data.device) {
+                close3DTempEditModal();
+                fetchThermalData();
+            } else {
+                errEl.textContent = data.error || 'Lỗi cập nhật';
+                errEl.style.display = 'block';
+            }
+        } catch (e) {
+            errEl.textContent = 'Lỗi kết nối: ' + e.message;
+            errEl.style.display = 'block';
+        } finally {
+            if (btn) { btn.disabled = false; btn.textContent = 'Lưu & Cập Nhật'; }
+        }
+    };
+
+    // ===== TOOLBAR EVENTS =====
+    function setupToolbarEvents() {
+        btnIsometric.addEventListener('click', () => {
+            btnIsometric.classList.add('active');
+            btnTopDown.classList.remove('active');
+            setIsometricView();
+        });
+
+        btnTopDown.addEventListener('click', () => {
+            btnTopDown.classList.add('active');
+            btnIsometric.classList.remove('active');
+            setTopDownView();
+        });
+
+        if (themeSegGroup) {
+            const themeBtns = themeSegGroup.querySelectorAll('.v3d-seg-btn');
+            themeBtns.forEach(btn => {
+                btn.addEventListener('click', () => {
+                    themeBtns.forEach(b => b.classList.remove('active'));
+                    btn.classList.add('active');
+                    applyTheme(btn.dataset.theme);
+                });
+            });
+        }
+
+        btnShadows.addEventListener('click', () => {
+            const enabled = !renderer.shadowMap.enabled;
+            renderer.shadowMap.enabled = enabled;
+            btnShadows.classList.toggle('active', enabled);
+            rebuildRoom();
+        });
+
+        btnLabels.addEventListener('click', () => {
+            labelsGroup.visible = !labelsGroup.visible;
+            btnLabels.classList.toggle('active', labelsGroup.visible);
+        });
+
+        btnAutoRotate.addEventListener('click', () => {
+            controls.autoRotate = !controls.autoRotate;
+            controls.autoRotateSpeed = 1.8;
+            btnAutoRotate.classList.toggle('active', controls.autoRotate);
+        });
+
+        if (btnThermal) {
+            btnThermal.addEventListener('click', () => {
+                isThermalEnabled = !isThermalEnabled;
+                btnThermal.classList.toggle('active', isThermalEnabled);
+                thermalGroup.visible = isThermalEnabled;
+                hotspotGroup.visible = isThermalEnabled;
+                smokeGroup.visible = isThermalEnabled;
+                if (thermalLegendEl) {
+                    thermalLegendEl.classList.toggle('hidden', !isThermalEnabled);
+                }
+                if (isThermalEnabled) {
+                    fetchThermalData();
+                }
+            });
+        }
+
+        const btnThermalIntensity = document.getElementById('btn-thermal-intensity');
+        if (btnThermalIntensity) {
+            btnThermalIntensity.addEventListener('click', () => {
+                thermalIntensityLevel = (thermalIntensityLevel + 1) % THERMAL_LEVELS.length;
+                const level = THERMAL_LEVELS[thermalIntensityLevel];
+                btnThermalIntensity.textContent = level.label;
+                if (thermalFloorUniforms) {
+                    thermalFloorUniforms.uFloorOpacity.value = level.floorOpacity;
+                }
+                if (thermalUniforms && thermalUniforms.uVolumeIntensity) {
+                    thermalUniforms.uVolumeIntensity.value = level.volumeIntensity;
+                }
+            });
+        }
+
+        btnResetCam.addEventListener('click', () => {
+            setIsometricView();
+        });
+
+        btnFullscreen.addEventListener('click', () => {
+            if (!document.fullscreenElement) {
+                wrapper.requestFullscreen().catch(err => console.error(err));
+            } else {
+                document.exitFullscreen();
+            }
+        });
+
+        if (btnStatsToggle && statsCard) {
+            btnStatsToggle.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const isOpen = statsCard.classList.toggle('open');
+                btnStatsToggle.classList.toggle('active', isOpen);
+            });
+
+            document.addEventListener('click', (e) => {
+                if (!statsCard.contains(e.target) && e.target !== btnStatsToggle) {
+                    statsCard.classList.remove('open');
+                    btnStatsToggle.classList.remove('active');
+                }
+            });
+        }
+    }
+
+    // ===== RENDER LOOP =====
+    let thermalClock = 0;
+    let lastFrameTime = performance.now();
+    function animate() {
+        requestAnimationFrame(animate);
+        controls.update();
+
+        const now = performance.now();
+        const dt = (now - lastFrameTime) / 1000.0;
+        lastFrameTime = now;
+
+        // Update volumetric shader uniforms every frame
+        if (isThermalEnabled && thermalUniforms) {
+            thermalClock += dt;
+            thermalUniforms.uTime.value = thermalClock;
+
+            // Sync camera world position so raymarching is correct from any viewpoint
+            const camWPos = new THREE.Vector3();
+            camera.getWorldPosition(camWPos);
+            thermalUniforms.uCamPos.value.copy(camWPos);
+        }
+
+        // Cập nhật hệ thống khói thể tích chuyển động trong phòng (dừng ở vách tường)
+        if (isThermalEnabled) {
+            updateSmokeParticles(dt);
+        }
+
+        // Nhấp nháy cảnh báo động cơ quá nhiệt (Critical Thermal Beacon Pulsing)
+        if (criticalPulsingItems.length > 0) {
+            const pulse = 0.4 + 0.6 * (Math.sin(thermalClock * 2.2) * 0.5 + 0.5);
+            for (let i = 0; i < criticalPulsingItems.length; i++) {
+                const item = criticalPulsingItems[i];
+                if (item.material) {
+                    if (item.material.emissiveIntensity !== undefined) {
+                        item.material.emissiveIntensity = 0.2 + 0.35 * pulse;
+                    }
+                    if (item.material.opacity !== undefined && item.material.transparent) {
+                        item.material.opacity = 0.65 + 0.35 * pulse;
+                    }
+                }
+            }
+        }
+
+        renderer.render(scene, camera);
+    }
+
+    // ===== START =====
+    initScene();
+    loadData();
+    startThermalPolling();
+    animate();
+
+})();
+</script>
+{% endblock %}
