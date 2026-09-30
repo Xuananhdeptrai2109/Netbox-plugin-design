@@ -28,6 +28,88 @@ class LayoutDetailAPIView(LoginRequiredMixin, View):
         # Lấy tất cả Rack thuộc Location và tính toán dung lượng trống
         racks_qs = Rack.objects.filter(location=location)
 
+        # Lấy ContentType và ImageAttachment nếu có
+        from django.contrib.contenttypes.models import ContentType
+        try:
+            from extras.models import ImageAttachment
+        except ImportError:
+            ImageAttachment = None
+
+        try:
+            from upload_file_plugin.models import UploadedFile
+        except ImportError:
+            UploadedFile = None
+
+        def resolve_image_url(obj, model_name=None):
+            if not obj:
+                return None
+            m_name = (model_name or getattr(getattr(obj, '_meta', None), 'model_name', None) or '').lower()
+
+            # 1. Thử lấy từ UploadedFile (upload_file_plugin)
+            if UploadedFile is not None and hasattr(obj, 'id'):
+                try:
+                    candidates = [m_name, m_name.replace('_', '')] if m_name else []
+                    uf_qs = UploadedFile.objects.filter(object_id=obj.id)
+                    if candidates:
+                        uf_qs = uf_qs.filter(model_name__in=candidates)
+                    uf_qs = uf_qs.order_by('-id')
+                    for uf in uf_qs:
+                        if uf.file:
+                            ext = str(uf.file.name).lower().split('.')[-1]
+                            if ext in ('jpg', 'jpeg', 'png', 'webp', 'gif', 'svg'):
+                                return uf.file.url
+                    first_uf = uf_qs.first()
+                    if first_uf and first_uf.file:
+                        return first_uf.file.url
+                except Exception:
+                    pass
+
+            # 2. Thử lấy từ ImageField trực tiếp (image_attachments hoặc image)
+            try:
+                if hasattr(obj, 'image_attachments') and obj.image_attachments:
+                    if getattr(obj.image_attachments, 'name', None):
+                        return obj.image_attachments.url
+            except Exception:
+                pass
+
+            try:
+                if hasattr(obj, 'image') and obj.image:
+                    if getattr(obj.image, 'name', None):
+                        return obj.image.url
+            except Exception:
+                pass
+
+            # 3. Thử lấy từ ImageAttachment
+            if ImageAttachment is not None and hasattr(obj, 'id'):
+                try:
+                    ct = ContentType.objects.get_for_model(obj)
+                    attachment = ImageAttachment.objects.filter(object_type=ct, object_id=obj.id).first()
+                    if attachment and attachment.image and getattr(attachment.image, 'name', None):
+                        return attachment.image.url
+                except Exception:
+                    pass
+
+            # 4. Thử lấy từ custom_field_data
+            try:
+                cf_data = getattr(obj, 'custom_field_data', {}) or {}
+                if isinstance(cf_data, dict):
+                    for k in ('image', 'image_url', 'img', 'photo'):
+                        if cf_data.get(k):
+                            return str(cf_data[k])
+            except Exception:
+                pass
+
+            # 5. Thử lấy từ asset_group nếu có
+            try:
+                if hasattr(obj, 'asset_group') and obj.asset_group:
+                    ag_url = resolve_image_url(obj.asset_group, model_name='assetgroup')
+                    if ag_url:
+                        return ag_url
+            except Exception:
+                pass
+
+            return None
+
         # Lấy thông tin Smart Lock liên kết với từng Rack
         smartlocks_by_rack = {}
         try:
@@ -37,8 +119,50 @@ class LayoutDetailAPIView(LoginRequiredMixin, View):
             for s in smartlocks:
                 if s.rack_id not in smartlocks_by_rack:
                     smartlocks_by_rack[s.rack_id] = {}
-                smartlocks_by_rack[s.rack_id][s.rack_face] = s.status
+                s_img = resolve_image_url(s, model_name='smartlock')
+                face_key = s.rack_face or 'front'
+                smartlocks_by_rack[s.rack_id][face_key] = {
+                    'id': s.id,
+                    'name': s.name or f"Smart Lock #{s.id}",
+                    'code': s.code,
+                    'status': s.status,
+                    'image_url': s_img,
+                }
         except (ImportError, Exception):
+            pass
+
+        # Lấy danh sách Device trong từng Rack
+        devices_by_rack = {}
+        try:
+            from dcim.models import Device
+            racks_ids = [r.id for r in racks_qs]
+            dev_qs = Device.objects.filter(rack_id__in=racks_ids).select_related('device_type')
+            for dev in dev_qs:
+                if dev.rack_id not in devices_by_rack:
+                    devices_by_rack[dev.rack_id] = []
+                
+                # Tìm ảnh cho device: từ device -> device_type front_image -> ImageAttachment của device_type
+                dev_img = resolve_image_url(dev)
+                if not dev_img and dev.device_type:
+                    if getattr(dev.device_type, 'front_image', None) and dev.device_type.front_image:
+                        dev_img = dev.device_type.front_image.url
+                    else:
+                        dev_img = resolve_image_url(dev.device_type)
+
+                pos = int(dev.position) if dev.position is not None else None
+                u_h = dev.device_type.u_height if (dev.device_type and dev.device_type.u_height) else 1
+
+                devices_by_rack[dev.rack_id].append({
+                    'id': dev.id,
+                    'name': dev.name or f"Device #{dev.id}",
+                    'position': pos,
+                    'u_height': u_h,
+                    'face': dev.face or 'front',
+                    'status': dev.status,
+                    'image_url': dev_img,
+                    'device_type': dev.device_type.model if dev.device_type else '',
+                })
+        except Exception:
             pass
 
         racks_list = []
@@ -55,7 +179,9 @@ class LayoutDetailAPIView(LoginRequiredMixin, View):
             free_percentage = round(free_percentage, 1)
             
             rack_locks = smartlocks_by_rack.get(r.id, {})
-            
+            front_lock = rack_locks.get('front', None)
+            rear_lock = rack_locks.get('rear', None)
+
             racks_list.append({
                 'id': r.id,
                 'name': r.name,
@@ -63,8 +189,11 @@ class LayoutDetailAPIView(LoginRequiredMixin, View):
                 'u_height': r.u_height,
                 'free_u': free_u,
                 'free_percentage': free_percentage,
-                'front_status': rack_locks.get('front', None),
-                'rear_status': rack_locks.get('rear', None),
+                'front_status': front_lock['status'] if front_lock else None,
+                'rear_status': rear_lock['status'] if rear_lock else None,
+                'front_lock': front_lock,
+                'rear_lock': rear_lock,
+                'devices': devices_by_rack.get(r.id, []),
             })
 
 
@@ -85,6 +214,7 @@ class LayoutDetailAPIView(LoginRequiredMixin, View):
                     'serial_number': a.serial_number,
                     'manufacturer': a.manufacturer,
                     'asset_group': a.asset_group.name if a.asset_group else '',
+                    'image_url': resolve_image_url(a, model_name='asset'),
                 })
         except ImportError:
             pass
@@ -107,6 +237,7 @@ class LayoutDetailAPIView(LoginRequiredMixin, View):
                     'asset_group': s.asset_group.name if s.asset_group else '',
                     'rack_id': s.rack_id,
                     'rack_face': s.rack_face,
+                    'image_url': resolve_image_url(s, model_name='smartlock'),
                 })
         except ImportError:
             pass

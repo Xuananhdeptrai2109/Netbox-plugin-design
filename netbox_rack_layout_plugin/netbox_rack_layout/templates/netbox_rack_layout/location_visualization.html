@@ -616,9 +616,11 @@
             </div>
             <div class="rl-toolbar-divider"></div>
             <div class="rl-toolbar-group">
-                <button class="rl-btn" id="rl-zoom-in" title="Phóng to">🔍+</button>
-                <span class="rl-zoom-display" id="rl-zoom-display">100%</span>
-                <button class="rl-btn" id="rl-zoom-out" title="Thu nhỏ">🔍−</button>
+                <span id="rl-zoom-controls" style="display: inline-flex; align-items: center; gap: 4px;">
+                    <button class="rl-btn" id="rl-zoom-in" title="Phóng to">🔍+</button>
+                    <span class="rl-zoom-display" id="rl-zoom-display">100%</span>
+                    <button class="rl-btn" id="rl-zoom-out" title="Thu nhỏ">🔍−</button>
+                </span>
                 <button class="rl-btn" id="rl-zoom-reset" title="Khôi phục sơ đồ đã lưu gần nhất">⟲</button>
                 <button class="rl-btn" id="rl-fit-btn" title="Fit to Screen">⊡ Fit</button>
             </div>
@@ -2714,7 +2716,8 @@
             } else if (isWallElevation) {
                 transformer.padding(0);
                 transformer.ignoreStroke(true);
-                transformer.enabledAnchors(['top-left', 'top-center', 'top-right', 'middle-right', 'bottom-right', 'bottom-center', 'bottom-left', 'middle-left']);
+                // CHỈ CHO PHÉP TĂNG / ĐIỀU CHỈNH CHIỀU CAO TƯỜNG (KHÔNG ĐƯỢC KÉO DÀI HAY CO NGANG)
+                transformer.enabledAnchors(['top-center', 'bottom-center']);
             } else if (isRack || isAsset) {
                 transformer.padding(2);
                 transformer.ignoreStroke(false);
@@ -2723,7 +2726,12 @@
                 transformer.padding(0);
                 transformer.ignoreStroke(true);
                 if (currentViewMode === 'wall') {
-                    transformer.enabledAnchors(['top-left', 'top-center', 'top-right', 'middle-right', 'bottom-right', 'bottom-center', 'bottom-left', 'middle-left']);
+                    if (isDoor) {
+                        // Cửa chính chỉ điều chỉnh bề rộng hoặc chiều cao từ trên xuống, đáy luôn gắn sàn
+                        transformer.enabledAnchors(['top-left', 'top-center', 'top-right', 'middle-left', 'middle-right']);
+                    } else {
+                        transformer.enabledAnchors(['top-left', 'top-center', 'top-right', 'middle-right', 'bottom-right', 'bottom-center', 'bottom-left', 'middle-left']);
+                    }
                 } else {
                     transformer.enabledAnchors(['middle-left', 'middle-right']);
                 }
@@ -3154,10 +3162,12 @@
             activeWallId = parseInt(wallGroup.getAttr('objectId'), 10);
             currentViewMode = 'wall';
 
-            // Show navigation group
+            // Show navigation group & hide zoom controls in wall view
             navGroupEl.style.display = 'inline-flex';
             navDividerEl.style.display = 'inline-flex';
             breadcrumbEl.innerHTML = `🧱 Bức tường W${activeWallId}`;
+            const zoomControlsEl = document.getElementById('rl-zoom-controls');
+            if (zoomControlsEl) zoomControlsEl.style.display = 'none';
 
             deselectAll();
 
@@ -3202,9 +3212,11 @@
             currentViewMode = 'location';
             activeWallId = null;
 
-            // Hide navigation group
+            // Hide navigation group & restore zoom controls
             navGroupEl.style.display = 'none';
             navDividerEl.style.display = 'none';
+            const zoomControlsEl = document.getElementById('rl-zoom-controls');
+            if (zoomControlsEl) zoomControlsEl.style.display = 'inline-flex';
 
             deselectAll();
 
@@ -3406,11 +3418,11 @@
             }
 
             // Dựng Mặt Trước (Ở trên)
-            const frontFaceGroup = buildWallFacePlane('Mặt Trước (Front Face)', 'front', 0, wallLength, wallHeight);
+            let frontFaceGroup = buildWallFacePlane('Mặt Trước (Front Face)', 'front', 0, wallLength, wallHeight);
             wallBgGroup.add(frontFaceGroup);
 
             // Dựng Mặt Sau (Ở dưới)
-            const backFaceGroup = buildWallFacePlane('Mặt Sau (Back Face)', 'back', wallHeight + gapBetweenFaces, wallLength, wallHeight);
+            let backFaceGroup = buildWallFacePlane('Mặt Sau (Back Face)', 'back', wallHeight + gapBetweenFaces, wallLength, wallHeight);
             wallBgGroup.add(backFaceGroup);
 
             wallBgGroup.on('click tap', (e) => {
@@ -3418,42 +3430,106 @@
                 selectNode(wallBgGroup);
             });
 
-            wallBgGroup.on('transformend', () => {
-                const scaleX = Math.abs(wallBgGroup.scaleX());
-                const scaleY = Math.abs(wallBgGroup.scaleY());
-                let newW = Math.max(100, Math.round(wallLength * scaleX));
-                let newH = Math.max(100, Math.round(wallHeight * scaleY));
-                if (snapToGrid) {
-                    newW = snapValue(newW);
-                    newH = snapValue(newH);
-                }
+            // Khóa chiều rộng khi kéo transformer, chỉ cho phép thay đổi theo chiều cao
+            wallBgGroup.on('transform', () => {
                 wallBgGroup.scaleX(1);
-                wallBgGroup.scaleY(1);
-                
-                wallLength = newW;
+            });
+
+            function applyNewWallElevationHeight(newH) {
+                newH = Math.max(240, Math.round(newH));
+                if (snapToGrid) {
+                    newH = snapValue(newH);
+                    newH = Math.max(240, newH);
+                }
+
+                const oldWallH = wallHeight;
+                const oldBackOffsetY = oldWallH + gapBetweenFaces;
+
                 wallHeight = newH;
                 const newTotalH = wallHeight * 2 + gapBetweenFaces;
+                const newBackOffsetY = wallHeight + gapBetweenFaces;
 
-                wallBgGroup.width(newW);
+                wallBgGroup.scaleX(1);
+                wallBgGroup.scaleY(1);
+                wallBgGroup.width(wallLength);
                 wallBgGroup.height(newTotalH);
-                wallBgGroup.setAttr('wallLength', newW);
-                wallBgGroup.setAttr('wallHeight', newH);
+                wallBgGroup.setAttr('wallLength', wallLength);
+                wallBgGroup.setAttr('wallHeight', wallHeight);
                 wallBgGroup.setAttr('totalHeight', newTotalH);
 
-                // Xây dựng lại 2 mặt phẳng
-                frontFaceGroup.destroy();
-                backFaceGroup.destroy();
+                // Cập nhật wallGroup gốc trên mặt bằng sàn
+                if (wallGroup) {
+                    wallGroup.setAttr('wallElevationHeight', wallHeight);
+                    wallGroup.setAttr('zIndex', wallHeight);
+                }
 
-                const newFront = buildWallFacePlane('Mặt Trước (Front Face)', 'front', 0, newW, newH);
-                const newBack = buildWallFacePlane('Mặt Sau (Back Face)', 'back', newH + gapBetweenFaces, newW, newH);
-                wallBgGroup.add(newFront, newBack);
-                newFront.moveToBottom();
-                newBack.moveToBottom();
+                // Cập nhật floorPlanObjects
+                const wallInFloor = (floorPlanObjects || []).find(o => o.object_type === 'wall' && o.object_id === activeWallId);
+                if (wallInFloor) {
+                    wallInFloor.z_index = wallHeight;
+                }
+
+                // Xây dựng lại 2 mặt phẳng
+                if (frontFaceGroup) frontFaceGroup.destroy();
+                if (backFaceGroup) backFaceGroup.destroy();
+
+                frontFaceGroup = buildWallFacePlane('Mặt Trước (Front Face)', 'front', 0, wallLength, wallHeight);
+                backFaceGroup = buildWallFacePlane('Mặt Sau (Back Face)', 'back', newBackOffsetY, wallLength, wallHeight);
+                wallBgGroup.add(frontFaceGroup);
+                wallBgGroup.add(backFaceGroup);
+                frontFaceGroup.moveToBottom();
+                backFaceGroup.moveToBottom();
+
+                // CẬP NHẬT TẤT CẢ CÁC Ô CỬA TRÊN TƯỜNG: VỊ TRÍ CỬA LUÔN LUÔN GẮN VỚI MẶT PHẲNG ĐÁY
+                wallBgGroup.find('.wall-opening').forEach(openingNode => {
+                    const isWin = !!openingNode.getAttr('isWindow');
+                    const isDoorNode = !isWin;
+                    const faceTag = openingNode.getAttr('faceTag') || 'front';
+                    const faceOffsetY = (faceTag === 'back') ? newBackOffsetY : 0;
+                    const doorH = openingNode.getAttr('doorHeight') || openingNode.height() || (isDoorNode ? 220 : 90);
+
+                    if (isDoorNode) {
+                        // CỬA CHÍNH: Luôn luôn gắn chặt vào mặt phẳng đáy của tường
+                        const newDoorY = faceOffsetY + wallHeight - doorH;
+                        openingNode.y(newDoorY);
+                        openingNode.setAttr('baseY', newDoorY);
+                    } else {
+                        // Cửa sổ: Giữ khoảng cách bậu cửa sổ 80px so với sàn đáy
+                        const sillH = 80;
+                        const newWinY = Math.max(faceOffsetY + 10, faceOffsetY + wallHeight - sillH - doorH);
+                        openingNode.y(newWinY);
+                        openingNode.setAttr('baseY', newWinY);
+                    }
+                });
+
+                // CẬP NHẬT TẤT CẢ THIẾT BỊ GẮN TRÊN TƯỜNG (ASSET, RACK, SMARTLOCK)
+                wallBgGroup.find('.layout-object').forEach(itemNode => {
+                    const faceTag = itemNode.getAttr('wallFace') || 'front';
+                    const itemH = itemNode.getAttr('itemHeight') || itemNode.getAttr('assetHeight') || itemNode.height() || 70;
+                    if (faceTag === 'back') {
+                        const curY = itemNode.y();
+                        const relY = curY - oldBackOffsetY;
+                        const newY = newBackOffsetY + Math.max(10, Math.min(wallHeight - itemH - 10, relY));
+                        itemNode.y(newY);
+                        itemNode.setAttr('baseY', newY);
+                    } else {
+                        const curY = itemNode.y();
+                        const newY = Math.min(wallHeight - itemH - 10, curY);
+                        itemNode.y(newY);
+                        itemNode.setAttr('baseY', newY);
+                    }
+                });
 
                 if (selectedNode === wallBgGroup) {
                     transformer.forceUpdate();
                 }
                 mainLayer.batchDraw();
+            }
+
+            wallBgGroup.on('transformend', () => {
+                const scaleY = Math.abs(wallBgGroup.scaleY());
+                let newH = Math.max(240, Math.round(wallHeight * scaleY));
+                applyNewWallElevationHeight(newH);
             });
 
             mainLayer.add(wallBgGroup);
@@ -4071,13 +4147,18 @@
                     const localPos = transform.point(pos);
                     const w = group.getAttr('doorWidth') || width;
                     const h = group.getAttr('doorHeight') || height;
-                    const cx = Math.max(0, Math.min(wallLength - w, localPos.x));
+                    const curWallLen = wallBgGroup.getAttr('wallLength') || wallLength;
+                    const curWallH = wallBgGroup.getAttr('wallHeight') || wallHeight;
+                    const curGap = 50;
+                    const curFaceOffsetY = (faceTag === 'back') ? (curWallH + curGap) : 0;
+                    const cx = Math.max(0, Math.min(curWallLen - w, localPos.x));
                     let cy;
                     if (isDoor) {
-                        cy = faceOffsetY + wallHeight - h;
+                        // Vị trí cửa luôn luôn được gắn chặt với mặt phẳng đáy
+                        cy = curFaceOffsetY + curWallH - h;
                     } else {
-                        const minY = faceOffsetY + 10;
-                        const maxY = faceOffsetY + wallHeight - h - 10;
+                        const minY = curFaceOffsetY + 10;
+                        const maxY = curFaceOffsetY + curWallH - h - 10;
                         cy = Math.max(minY, Math.min(maxY, localPos.y));
                     }
                     return wallBgGroup.getAbsoluteTransform().point({ x: cx, y: cy });
@@ -4249,20 +4330,21 @@
             group.on('dragmove', () => {
                 const curX = group.x();
                 const curW = group.getAttr('doorWidth') || width;
-                const clampedX = Math.max(0, Math.min(wallLength - curW, curX));
+                const curWallLen = wallBgGroup.getAttr('wallLength') || wallLength;
+                const clampedX = Math.max(0, Math.min(curWallLen - curW, curX));
                 
                 let xFront, xBack;
                 if (faceTag === 'front') {
                     xFront = clampedX;
-                    xBack = wallLength - (xFront + curW);
+                    xBack = curWallLen - (xFront + curW);
                 } else {
                     xBack = clampedX;
-                    xFront = wallLength - (xBack + curW);
+                    xFront = curWallLen - (xBack + curW);
                 }
 
                 const opposite = getOppositeFaceGroup();
                 if (opposite) {
-                    opposite.x(Math.max(0, Math.min(wallLength - curW, (faceTag === 'front') ? xBack : xFront)));
+                    opposite.x(Math.max(0, Math.min(curWallLen - curW, (faceTag === 'front') ? xBack : xFront)));
                 }
 
                 syncDoorToFloorPlan(wallGroup, type, id, xFront, curW);
@@ -4272,24 +4354,40 @@
             group.on('dragend', () => {
                 let curX = group.x();
                 const curW = group.getAttr('doorWidth') || width;
+                const curH = group.getAttr('doorHeight') || height;
+                const curWallH = wallBgGroup.getAttr('wallHeight') || wallHeight;
+                const curGap = 50;
+                const curFaceOffsetY = (faceTag === 'back') ? (curWallH + curGap) : 0;
+                const curWallLen = wallBgGroup.getAttr('wallLength') || wallLength;
+
                 if (snapToGrid) {
                     curX = snapValue(curX);
                 }
-                const clampedX = Math.max(0, Math.min(wallLength - curW, curX));
+                const clampedX = Math.max(0, Math.min(curWallLen - curW, curX));
                 group.x(clampedX);
+
+                if (isDoor) {
+                    // Đảm bảo cửa luôn gắn chặt với đáy sàn
+                    group.y(curFaceOffsetY + curWallH - curH);
+                }
 
                 let xFront, xBack;
                 if (faceTag === 'front') {
                     xFront = clampedX;
-                    xBack = wallLength - (xFront + curW);
+                    xBack = curWallLen - (xFront + curW);
                 } else {
                     xBack = clampedX;
-                    xFront = wallLength - (xBack + curW);
+                    xFront = curWallLen - (xBack + curW);
                 }
 
                 const opposite = getOppositeFaceGroup();
                 if (opposite) {
-                    opposite.x(Math.max(0, Math.min(wallLength - curW, (faceTag === 'front') ? xBack : xFront)));
+                    opposite.x(Math.max(0, Math.min(curWallLen - curW, (faceTag === 'front') ? xBack : xFront)));
+                    if (isDoor) {
+                        const oppTag = (faceTag === 'front') ? 'back' : 'front';
+                        const oppFaceOffsetY = (oppTag === 'back') ? (curWallH + curGap) : 0;
+                        opposite.y(oppFaceOffsetY + curWallH - curH);
+                    }
                 }
 
                 syncDoorToFloorPlan(wallGroup, type, id, xFront, curW);
@@ -4308,19 +4406,24 @@
                     newW = snapValue(newW);
                     newH = snapValue(newH);
                 }
-                newW = Math.min(wallLength, newW);
-                newH = Math.min(wallHeight - 10, newH);
+                const curWallLen = wallBgGroup.getAttr('wallLength') || wallLength;
+                const curWallH = wallBgGroup.getAttr('wallHeight') || 240;
+                const curGap = 50;
+                newW = Math.min(curWallLen, newW);
+                newH = Math.min(curWallH - 10, newH);
 
                 group.scaleX(1);
                 group.scaleY(1);
                 group.setAttr('doorWidth', newW);
                 group.setAttr('doorHeight', newH);
 
-                let curX = Math.max(0, Math.min(wallLength - newW, group.x()));
-                let xFront = (faceTag === 'front') ? curX : (wallLength - (curX + newW));
-                let xBack = wallLength - (xFront + newW);
+                let curX = Math.max(0, Math.min(curWallLen - newW, group.x()));
+                let xFront = (faceTag === 'front') ? curX : (curWallLen - (curX + newW));
+                let xBack = curWallLen - (xFront + newW);
 
-                let curY = isDoor ? (faceOffsetY + wallHeight - newH) : group.y();
+                const curFaceOffsetY = (faceTag === 'back') ? (curWallH + curGap) : 0;
+                // VỊ TRÍ CỬA LUÔN LUÔN GẮN VỚI MẶT PHẲNG ĐÁY
+                let curY = isDoor ? (curFaceOffsetY + curWallH - newH) : group.y();
                 group.position({ x: (faceTag === 'front') ? xFront : xBack, y: curY });
                 buildVisuals(newW, newH);
 
@@ -4332,8 +4435,8 @@
                     opposite.setAttr('doorWidth', newW);
                     opposite.setAttr('doorHeight', newH);
                     const oppTag = (faceTag === 'front') ? 'back' : 'front';
-                    const oppOffsetY = (oppTag === 'back') ? (wallHeight + gapBetweenFaces) : 0;
-                    let oppY = isDoor ? (oppOffsetY + wallHeight - newH) : opposite.y();
+                    const oppOffsetY = (oppTag === 'back') ? (curWallH + curGap) : 0;
+                    let oppY = isDoor ? (oppOffsetY + curWallH - newH) : opposite.y();
                     opposite.position({ x: (faceTag === 'front') ? xBack : xFront, y: oppY });
                     if (typeof opposite._rebuildVisuals === 'function') {
                         opposite._rebuildVisuals(newW, newH);
