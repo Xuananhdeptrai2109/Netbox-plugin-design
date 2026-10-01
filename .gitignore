@@ -24,4 +24,8 @@ netbox.env
 venv/
 *.log
 
+# Bỏ qua thư mục GitHub Self-Hosted Runner cục bộ
+actions-runner/
+*.zip
+
 
