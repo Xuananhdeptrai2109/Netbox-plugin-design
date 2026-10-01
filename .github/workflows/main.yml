@@ -111,6 +111,14 @@ jobs:
 
       - name: Prepare environment files from templates
         run: |
+          # Chuẩn bị file .env cho netbox_zabbix_sync từ template example
+          if [ -f "netbox_zabbix_sync/.env.example" ]; then
+            cp netbox_zabbix_sync/.env.example netbox_zabbix_sync/.env
+          else
+            touch netbox_zabbix_sync/.env
+          fi
+
+          # Chuẩn bị thư mục env và các file môi trường cho NetBox
           cd netbox
           mkdir -p env
           if [ -d "env_example" ]; then
@@ -118,6 +126,8 @@ jobs:
             cp env_example/postgres.env.example env/postgres.env 2>/dev/null || touch env/postgres.env
             cp env_example/redis.env.example env/redis.env 2>/dev/null || touch env/redis.env
             cp env_example/redis-cache.env.example env/redis-cache.env 2>/dev/null || touch env/redis-cache.env
+          else
+            touch env/netbox.env env/postgres.env env/redis.env env/redis-cache.env
           fi
           touch .env
           echo "VERSION=v3.7.8" >> .env
