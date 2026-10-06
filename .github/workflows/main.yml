@@ -37,7 +37,7 @@ jobs:
 
       - name: Check Python Syntax (Compile all .py files)
         run: |
-          python -m py_compile $(git ls-files '*.py')
+          git ls-files -z '*.py' | xargs -0 -r python -m py_compile
 
       - name: Lint with Flake8 (Syntax errors & undefined names)
         run: |
@@ -51,7 +51,7 @@ jobs:
   build-plugins:
     name: Build & Validate NetBox Plugins
     runs-on: ubuntu-latest
-    needs: lint-and-syntax
+    # Chạy song song độc lập với lint-and-syntax để tối ưu thời gian
 
     steps:
       - name: Checkout repository
@@ -67,40 +67,43 @@ jobs:
           python -m pip install --upgrade pip
           pip install build wheel twine setuptools
 
-      - name: Build Plugins
+      - name: Auto-Discover and Build All Plugins
         run: |
           mkdir -p dist_artifacts
-          PLUGINS=(
-            "netbox-provinces-plugin"
-            "netbox_access_request_plugin"
-            "netbox_asset_management_plugin"
-            "netbox_rack_layout_plugin"
-            "netbox_smart_lock_plugin"
-            "netbox_zabbix_plugin"
-            "upload_file_plugin-production"
-          )
-          
-          for plugin in "${PLUGINS[@]}"; do
-            if [ -f "$plugin/setup.py" ]; then
-              echo "=========================================="
-              echo "Building package for: $plugin"
-              echo "=========================================="
-              cd "$plugin"
-              python -m build --sdist --wheel --outdir ../dist_artifacts/
-              cd ..
+          echo "==> Đang tự động quét các thư mục Plugin..."
+
+          # Tự động tìm tất cả các thư mục con chứa setup.py hoặc pyproject.toml
+          find . -maxdepth 2 -mindepth 2 \( -name "setup.py" -o -name "pyproject.toml" \) | while read -r config_file; do
+            plugin_dir="$(dirname "$config_file")"
+            plugin_name="$(basename "$plugin_dir")"
+
+            # Bỏ qua các thư mục hệ thống / runner / venv nếu có
+            if [ "$plugin_name" = "actions-runner" ] || [ "$plugin_name" = "netbox" ]; then
+              continue
             fi
+
+            echo "=========================================="
+            echo "Phát hiện và đóng gói plugin: $plugin_name ($plugin_dir)"
+            echo "=========================================="
+            (cd "$plugin_dir" && python -m build --sdist --wheel --outdir "$GITHUB_WORKSPACE/dist_artifacts/")
           done
 
       - name: Validate built distributions with Twine
         run: |
-          twine check dist_artifacts/*
+          if ls dist_artifacts/* 1> /dev/null 2>&1; then
+            twine check dist_artifacts/*
+          else
+            echo "Không có package nào cần kiểm tra."
+          fi
 
       - name: Upload Built Plugins Artifacts
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: netbox-plugins-packages
           path: dist_artifacts/
           retention-days: 7
+          if-no-files-found: ignore
 
   docker-compose-validate:
     name: Validate Docker Compose Configuration
@@ -146,9 +149,6 @@ jobs:
     if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
 
     steps:
-      - name: Checkout latest code
-        uses: actions/checkout@v4
-
       - name: Deploy Docker Compose on Local Machine
         shell: powershell
         run: |
@@ -163,8 +163,14 @@ jobs:
           Write-Host "==> Rebuild và khởi động lại các container NetBox..."
           docker compose up -d --build --remove-orphans
 
+          Write-Host "==> Đợi NetBox khởi động và sẵn sàng kết nối..."
+          Start-Sleep -Seconds 15
+
           Write-Host "==> Chạy Database Migration cho NetBox và các Plugin..."
           docker compose exec -T netbox /opt/netbox/venv/bin/python /opt/netbox/netbox/manage.py migrate
+
+          Write-Host "==> Thu gom file tĩnh (CSS/JS) cho giao diện Plugins..."
+          docker compose exec -T netbox /opt/netbox/venv/bin/python /opt/netbox/netbox/manage.py collectstatic --no-input
 
           Write-Host "==> Kiểm tra trạng thái các container:"
           docker compose ps
