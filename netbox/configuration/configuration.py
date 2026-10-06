@@ -29,4 +29,4 @@ REDIS = {
 
 SECRET_KEY = os.getenv("SECRET_KEY")
 DEVELOPMENT = True
-DEVELOPER = True
+DEVELOPER = True
