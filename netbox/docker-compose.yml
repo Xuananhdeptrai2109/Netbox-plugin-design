@@ -14,7 +14,9 @@ services:
 
       - redis-cache # Phụ thuộc vào dịch vụ Redis Cache
 
-    env_file: env/netbox.env # Tệp môi trường chứa các biến cấu hình cho NetBox
+    env_file:
+      - .env
+      - env/netbox.env
 
     ports:
       - "9090:8080" # Map cổng 9090 của container NetBox ra cổng 9090 trên máy chủ host
