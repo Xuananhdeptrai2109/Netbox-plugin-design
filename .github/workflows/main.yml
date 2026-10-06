@@ -1,4 +1,4 @@
-name: CI Pipeline
+name: CI/CD Pipeline
 
 on:
   push:
@@ -11,22 +11,23 @@ on:
       - master
   workflow_dispatch:
 
+concurrency:
+  group: production-deployment
+  cancel-in-progress: false
+
 jobs:
   lint-and-syntax:
     name: Python Lint & Syntax Check
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python-version: ["3.10", "3.11"]
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Python ${{ matrix.python-version }}
+      - name: Set up Python 3.11
         uses: actions/setup-python@v5
         with:
-          python-version: ${{ matrix.python-version }}
+          python-version: "3.11"
           cache: "pip"
 
       - name: Install dependencies
@@ -130,7 +131,7 @@ jobs:
             touch env/netbox.env env/postgres.env env/redis.env env/redis-cache.env
           fi
           touch .env
-          echo "VERSION=v3.7.8" >> .env
+          echo "VERSION=v4.0-2.9.1" >> .env
 
       - name: Validate docker-compose configuration
         run: |
@@ -151,14 +152,21 @@ jobs:
       - name: Deploy Docker Compose on Local Machine
         shell: powershell
         run: |
-          Write-Host "==> Chuyển đến thư mục dự án NetBox..."
+          Write-Host "==> Cập nhật mã nguồn mới nhất từ GitHub..."
+          Set-Location -Path "d:\docker-netbox"
+          git fetch origin main
+          git reset --hard origin/main
+
+          Write-Host "==> Chuyển đến thư mục cấu hình NetBox..."
           Set-Location -Path "d:\docker-netbox\netbox"
 
           Write-Host "==> Rebuild và khởi động lại các container NetBox..."
           docker compose up -d --build --remove-orphans
 
+          Write-Host "==> Chạy Database Migration cho NetBox và các Plugin..."
+          docker compose exec -T netbox /opt/netbox/venv/bin/python /opt/netbox/netbox/manage.py migrate
+
           Write-Host "==> Kiểm tra trạng thái các container:"
           docker compose ps
 
           Write-Host "==> Triển khai tự động trên máy cá nhân thành công!"
-
